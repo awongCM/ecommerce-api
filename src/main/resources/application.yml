@@ -1,0 +1,68 @@
+spring:
+  application:
+    name: ecommerce-api
+  profiles:
+    active: dev
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,env,loggers,inventory
+  endpoint:
+    health:
+      show-details: always
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: ecommerce-api
+    version: 1.0.0
+    description: Portfolio ecommerce REST API
+
+resilience4j:
+
+  circuitbreaker:
+    instances:
+      paymentGateway:
+        sliding-window-size: 10
+        failure-rate-threshold: 50          # open if 50% of 10 calls fail
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 3
+        register-health-indicator: true
+
+  retry:
+    instances:
+      paymentGateway:
+        max-attempts: 3
+        wait-duration: 500ms
+        retry-exceptions:
+          - java.io.IOException
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+
+  ratelimiter:
+    instances:
+      productSearch:
+        limit-for-period: 100         # 100 requests per refresh period
+        limit-refresh-period: 1s
+        timeout-duration: 0s          # fail immediately if limit exceeded
+
+spring:
+  cache:
+    type: simple                      # in-memory cache (use Redis in prod)
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:myVerySecretKeyForDevelopmentOnlyChangeInProd}
+    expiry-ms: 86400000       # 24 hours
+  payment-gateway:
+    url: ${PAYMENT_GATEWAY_URL:https://api.mock-payment.com}
+    timeout-ms: 5000
+  max-cart-items: 50
+  max-order-amount: 10000.00
