@@ -1,0 +1,43 @@
+# IDE
+.vscode/
+.idea/
+*.iml
+*.eclipse
+*.sts4
+
+# Maven build output
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Spring Boot
+application-prod.yml
+
+# Secrets & credentials
+.env
+*.key
+*.pem
+*.p12
+*.jks
+*.keystore
+
+# Logs
+*.log
+logs/
+
+# Docker
+docker-compose.override.yml
+
+# Kubernetes secrets (never commit these)
+k8s/secrets.yaml
+
+# Test & coverage reports
+*.exec
+jacoco.exec
+surefire-reports/
+
+# OS
+.DS_Store
+Thumbs.db
