@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
 
   app:
@@ -8,7 +6,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_PROFILES_ACTIVE=docker
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/ecommercedb
       - SPRING_DATASOURCE_USERNAME=ecommerceuser
       - SPRING_DATASOURCE_PASSWORD=ecommercepass

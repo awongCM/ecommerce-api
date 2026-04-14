@@ -26,7 +26,7 @@ CREATE TABLE payments (
     status            VARCHAR(30)   NOT NULL DEFAULT 'PENDING',
     idempotency_key   VARCHAR(255) UNIQUE NOT NULL,
     gateway_reference VARCHAR(255),
-    card_last4        CHAR(4),
+    card_last4        VARCHAR(4),
     created_at        TIMESTAMP,
     processed_at      TIMESTAMP
 );

@@ -1,32 +1,35 @@
-# Stage 1: Build
-FROM eclipse-temurin:17-jdk-alpine AS build
+# Stage 1: Build — uses Maven image (no mvnw wrapper needed)
+FROM maven:3.9-eclipse-temurin-17 AS build
 
 WORKDIR /app
 
 # Cache dependencies separately from source code
 COPY pom.xml .
-COPY mvnw .
-COPY .mvn .mvn
-RUN ./mvnw dependency:go-offline -q
+RUN mvn dependency:go-offline -q
 
 # Build the app
 COPY src src
-RUN ./mvnw package -DskipTests -q
+RUN mvn package -DskipTests -q
 
 # Stage 2: Runtime — smaller image (JRE only, not JDK)
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre
 
 WORKDIR /app
 
-# Create non-root user for security
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-USER appuser
+# Install curl for health check and create non-root user
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd -r appgroup && \
+    useradd -r -g appgroup appuser
 
-COPY --from=build /app/target/ecommerce-api-*.jar app.jar
+COPY --from=build --chown=appuser:appgroup /app/target/ecommerce-api-*.jar app.jar
 
 # Health check using Actuator
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD wget -qO- http://localhost:8080/actuator/health || exit 1
+  CMD curl -f http://localhost:8080/actuator/health/liveness || exit 1
+
+USER appuser
 
 EXPOSE 8080
 

@@ -6,6 +6,7 @@ import com.example.ecommerce.service.ProductService;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.*;
+import java.net.URI;
 import org.springframework.stereotype.Component;
 
 /**
@@ -13,15 +14,15 @@ import org.springframework.stereotype.Component;
  * Compare this side-by-side with ProductController.java (Spring MVC)
  * to see the annotation differences clearly.
  *
- * Spring MVC  →  Jersey (JAX-RS)
+ * Spring MVC  ->  Jersey (JAX-RS)
  * --------------------------------
- * @RestController → @Path + @Component
- * @GetMapping     → @GET + @Path
- * @PostMapping    → @POST
- * @PathVariable   → @PathParam
- * @RequestParam   → @QueryParam
- * @RequestBody    → (implicit — parameter with @Consumes on method)
- * ResponseEntity  → Response
+ * @RestController -> @Path + @Component
+ * @GetMapping     -> @GET + @Path
+ * @PostMapping    -> @POST
+ * @PathVariable   -> @PathParam
+ * @RequestParam   -> @QueryParam
+ * @RequestBody    -> (implicit -- parameter with @Consumes on method)
+ * ResponseEntity  -> Response
  */
 @Path("/products")
 @Produces(MediaType.APPLICATION_JSON)

@@ -23,3 +23,15 @@ CREATE TABLE products (
 CREATE INDEX idx_products_category ON products(category_id);
 CREATE INDEX idx_products_active   ON products(active);
 CREATE INDEX idx_products_sku      ON products(sku);
+
+CREATE TABLE carts (
+    id          BIGSERIAL PRIMARY KEY,
+    customer_id BIGINT NOT NULL UNIQUE REFERENCES customers(id)
+);
+
+CREATE TABLE cart_items (
+    id         BIGSERIAL PRIMARY KEY,
+    cart_id    BIGINT  NOT NULL REFERENCES carts(id) ON DELETE CASCADE,
+    product_id BIGINT  NOT NULL REFERENCES products(id),
+    quantity   INTEGER NOT NULL CHECK (quantity > 0)
+);

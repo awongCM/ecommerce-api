@@ -3,6 +3,8 @@ spring:
     name: ecommerce-api
   profiles:
     active: dev
+  cache:
+    type: simple                      # in-memory cache (use Redis in prod)
 
 server:
   port: 8080
@@ -52,10 +54,6 @@ resilience4j:
         limit-for-period: 100         # 100 requests per refresh period
         limit-refresh-period: 1s
         timeout-duration: 0s          # fail immediately if limit exceeded
-
-spring:
-  cache:
-    type: simple                      # in-memory cache (use Redis in prod)
 
 app:
   jwt:

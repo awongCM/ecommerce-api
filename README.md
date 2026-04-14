@@ -143,12 +143,23 @@ A production-grade RESTful ecommerce API built with Spring Boot 3.x.
 ```
 
 ## Running Locally
-# Start all services
-docker compose up
 
-# App runs at http://localhost:8080
-# Kafka UI at http://localhost:8090
-# H2 Console (dev) at http://localhost:8080/h2-console
+### Prerequisites
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) or [Colima](https://github.com/abiosoft/colima) (Apple Silicon supported)
+
+### Start all services
+```bash
+docker-compose up -d
+```
+
+- App: http://localhost:8080
+- Kafka UI: http://localhost:8090
+- H2 Console (dev): http://localhost:8080/h2-console
+
+### Docker notes
+- Build stage uses `maven:3.9-eclipse-temurin-17` — no Maven wrapper needed
+- Runtime stage uses `eclipse-temurin:17-jre` (Ubuntu) — works on ARM64 (Apple Silicon) and AMD64
+- Non-root user (`appuser`) runs the process for security
 
 ## API Endpoints
 

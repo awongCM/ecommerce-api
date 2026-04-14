@@ -7,6 +7,7 @@ import com.example.ecommerce.service.OrderService;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.*;
+import java.net.URI;
 import org.springframework.stereotype.Component;
 
 @Path("/orders")
