@@ -29,7 +29,8 @@ A production-grade RESTful ecommerce API built with Spring Boot 3.x.
 │  │ ProductController  │  │       │  │ OrderResource      │  │
 │  │ CartController     │  │       │  │                    │  │
 │  │ OrderController    │  │       │  │ JerseyAuthFilter   │  │
-│  └────────────────────┘  │       │  │ JerseyExceptionMap │  │
+│  │ AdminController    │  │       │  │ JerseyExceptionMap │  │
+│  └────────────────────┘  │       │  └────────────────────┘  │
 │                          │       │  └────────────────────┘  │
 │  GlobalExceptionHandler  │       │                          │
 └──────────┬───────────────┘       └──────────┬───────────────┘
@@ -155,6 +156,7 @@ docker-compose up -d
 - App: http://localhost:8080
 - Kafka UI: http://localhost:8090
 - H2 Console (dev): http://localhost:8080/h2-console
+- Swagger UI: http://localhost:8080/swagger-ui.html
 
 ### Docker notes
 - Build stage uses `maven:3.9-eclipse-temurin-17` — no Maven wrapper needed
@@ -180,6 +182,25 @@ DELETE /api/v1/cart/items/{id} — Remove item
 ### Orders (authenticated)
 POST /api/v1/orders/checkout  — Checkout (idempotent)
 GET  /api/v1/orders           — My orders
+
+### Admin (ADMIN role required)
+GET /api/v1/admin/users             — List all users (paginated: ?page=0&size=20)
+PUT /api/v1/admin/users/{id}/roles  — Replace a user's roles
+
+**Role values:** `CUSTOMER`, `SELLER`, `ADMIN`
+
+```bash
+# Example: promote user 5 to SELLER
+curl -X PUT 'http://localhost:8080/api/v1/admin/users/5/roles' \
+  -H 'Authorization: Bearer <admin-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"roles": ["SELLER"]}'
+```
+
+**Guards:**
+- An admin cannot remove their own `ADMIN` role
+- The last admin in the system cannot be demoted
+- All role changes are recorded in the audit log
 
 ### Jersey (JAX-RS equivalent)
 GET  /jersey/products         — Same logic, JAX-RS annotations
