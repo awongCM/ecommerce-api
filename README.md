@@ -211,6 +211,37 @@ GET /actuator/health          — Health check
 GET /actuator/inventory       — Low stock report (admin)
 GET /actuator/metrics         — Prometheus metrics
 
+## Known Gaps / TODO
+
+### Admin Bootstrapping (needs implementation)
+The admin role-management endpoint requires `ROLE_ADMIN` to call, but there is currently
+no way to create the first admin through the API (chicken-and-egg problem).
+
+**Options to implement:**
+
+- [ ] **Option A — `DataInitializer` on startup (recommended for prod)**
+  A `CommandLineRunner` bean that checks `countByRole(ADMIN) == 0` on startup and
+  creates a default admin from environment variables (`ADMIN_EMAIL`, `ADMIN_PASSWORD`).
+  No hardcoded credentials in source code.
+
+- [ ] **Option B — Flyway seed migration (simple, good for dev)**
+  Add `V5__seed_admin.sql` that inserts a bcrypt-hashed admin account. Suitable for
+  local development; avoid hardcoding real credentials for production.
+
+- [ ] **Option C — Both** — Flyway migration for dev profile, `DataInitializer` for prod.
+
+Until this is resolved, the workaround is to manually insert via the H2 console
+(`http://localhost:8080/h2-console`) or directly in the database:
+```sql
+INSERT INTO customers (first_name, last_name, email, password_hash)
+VALUES ('Admin', 'User', 'admin@example.com', '<bcrypt-hash>');
+
+INSERT INTO customer_roles (customer_id, role)
+SELECT id, 'ADMIN' FROM customers WHERE email = 'admin@example.com';
+```
+
+---
+
 ## Key Design Decisions
 - Idempotent checkout prevents duplicate orders
 - @Version on Product prevents inventory oversell
