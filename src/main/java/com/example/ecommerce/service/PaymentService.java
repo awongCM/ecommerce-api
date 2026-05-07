@@ -9,7 +9,6 @@ import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -29,10 +28,10 @@ public class PaymentService {
      * Processes payment with:
      * - Circuit breaker (fail fast if gateway is down)
      * - Retry (3 attempts with backoff)
-     * - Runs in its OWN transaction (REQUIRES_NEW)
-     *   so payment record is saved even if caller rolls back
+     * - Runs in the caller transaction so FK constraints can
+     *   safely reference the just-created order row
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     @CircuitBreaker(name = "paymentGateway",
                     fallbackMethod = "paymentFallback")
     @Retry(name = "paymentGateway")
