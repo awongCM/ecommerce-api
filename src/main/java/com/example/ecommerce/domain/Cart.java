@@ -6,6 +6,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Entity
 @Table(name = "carts")
 public class Cart {
@@ -31,8 +34,10 @@ public class Cart {
     }
 
     public void addItem(Product product, int quantity) {
-        System.out.println("addItem" + product.getId());
-        System.out.println("addItem" + quantity);
+        log.info("addItem-cart-product {}", product.getId());
+        log.info("addItem-cart-quantity {}", quantity);
+        log.info("addItem-cart-items {}", items);
+
         Optional<CartItem> existing = items.stream()
             .filter(i -> i.getProduct().getId().equals(product.getId()))
             .findFirst();

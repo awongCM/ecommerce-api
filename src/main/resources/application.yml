@@ -64,3 +64,6 @@ app:
     timeout-ms: 5000
   max-cart-items: 50
   max-order-amount: 10000.00
+  mail:
+    from: ${MAIL_FROM:noreply@ecommerce.example.com}
+    base-url: ${APP_BASE_URL:http://localhost:3000}

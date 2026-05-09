@@ -4,11 +4,13 @@ import com.example.ecommerce.dto.request.AddToCartRequest;
 import com.example.ecommerce.dto.response.CartDTO;
 import com.example.ecommerce.service.CartService;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/cart")
 public class CartController {
@@ -26,9 +28,10 @@ public class CartController {
     @GetMapping
     public ResponseEntity<CartDTO> getCart(
             @AuthenticationPrincipal UserDetails user) {
-        System.out.println("getCart" + user.getUsername());
+        log.info("getCart-controller {}", user.getUsername());
         Long customerId = resolveCustomerId(user.getUsername());
-        System.out.println("customerId" + customerId);
+        log.info("customerId-controller {}", customerId);
+
         return ResponseEntity.ok(cartService.getCart(customerId));
     }
 
@@ -36,7 +39,10 @@ public class CartController {
     public ResponseEntity<CartDTO> addItem(
             @AuthenticationPrincipal UserDetails user,
             @Valid @RequestBody AddToCartRequest request) {
+        log.info("addItem-controller {}", request);
         Long customerId = resolveCustomerId(user.getUsername());
+        log.info("customerId-controller {}", customerId);
+
         return ResponseEntity.ok(cartService.addItem(customerId, request));
     }
 

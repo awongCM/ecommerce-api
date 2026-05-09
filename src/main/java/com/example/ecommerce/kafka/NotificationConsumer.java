@@ -1,20 +1,17 @@
 package com.example.ecommerce.kafka;
 
 import com.example.ecommerce.kafka.event.OrderCreatedEvent;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @Component
 public class NotificationConsumer {
-
-    private static final Logger log =
-        LoggerFactory.getLogger(NotificationConsumer.class);
 
     @KafkaListener(
         topics = OrderEventPublisher.ORDERS_CREATED_TOPIC,

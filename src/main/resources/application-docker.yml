@@ -1,16 +1,4 @@
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,env,loggers
-  endpoint:
-    health:
-      show-details: always
-      group:
-        liveness:
-          include: ping,diskSpace
-        readiness:
-          include: ping,db,diskSpace
+spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/ecommercedb}
     driver-class-name: org.postgresql.Driver
@@ -24,11 +12,31 @@ management:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  mail:
+    host: ${MAIL_HOST:mailhog}
+    port: ${MAIL_PORT:1025}
+    properties:
+      mail.smtp.auth: false
+      mail.smtp.starttls.enable: false
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
     consumer:
       group-id: ecommerce-docker
       auto-offset-reset: earliest
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,env,loggers
+  endpoint:
+    health:
+      show-details: always
+      group:
+        liveness:
+          include: ping,diskSpace
+        readiness:
+          include: ping,db,diskSpace
 
 logging:
   level:

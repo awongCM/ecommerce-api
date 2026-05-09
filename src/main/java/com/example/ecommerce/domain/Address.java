@@ -47,12 +47,17 @@ public class Address {
     public Long getId() { return id; }
     public Customer getCustomer() { return customer; }
     public String getStreetLine1() { return streetLine1; }
+    public void setStreetLine1(String s) { this.streetLine1 = s; }
     public String getStreetLine2() { return streetLine2; }
     public void setStreetLine2(String s) { this.streetLine2 = s; }
     public String getCity() { return city; }
+    public void setCity(String c) { this.city = c; }
     public String getState() { return state; }
+    public void setState(String s) { this.state = s; }
     public String getPostcode() { return postcode; }
+    public void setPostcode(String p) { this.postcode = p; }
     public String getCountry() { return country; }
+    public void setCountry(String c) { this.country = c; }
     public boolean isDefault() { return isDefault; }
     public void setDefault(boolean d) { this.isDefault = d; }
 }

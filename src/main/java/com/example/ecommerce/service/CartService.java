@@ -6,9 +6,12 @@ import com.example.ecommerce.dto.response.CartDTO;
 import com.example.ecommerce.exception.InsufficientStockException;
 import com.example.ecommerce.exception.ResourceNotFoundException;
 import com.example.ecommerce.repository.*;
+
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 public class CartService {
 
@@ -26,8 +29,9 @@ public class CartService {
 
     @Transactional(readOnly = true)
     public CartDTO getCart(Long customerId) {
-        System.out.println("getCartService" + customerId);
-        System.out.println("cartRepository" + cartRepository);
+        log.info("cartRepository-service {}", cartRepository);
+        log.info("getCart-service {}", customerId);
+
         Cart cart = cartRepository.findByCustomerIdWithItems(customerId)
             .orElseThrow(() ->
                 new ResourceNotFoundException("Cart for customer", customerId));
@@ -36,6 +40,10 @@ public class CartService {
 
     @Transactional
     public CartDTO addItem(Long customerId, AddToCartRequest request) {
+        log.info("cartRepository-service {}", cartRepository);
+        log.info("addItem-service {}", customerId);
+        log.info("request-service {}", request);
+        
         Cart cart = cartRepository.findByCustomerIdWithItems(customerId)
             .orElseThrow(() ->
                 new ResourceNotFoundException("Cart for customer", customerId));
@@ -56,6 +64,8 @@ public class CartService {
         }
 
         cart.addItem(product, request.getQuantity());
+        log.info("cart-service {}", cart);
+        log.info("cartRepository-service {}", cartRepository);
         return CartDTO.from(cartRepository.save(cart));
     }
 

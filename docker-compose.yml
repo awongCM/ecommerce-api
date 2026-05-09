@@ -17,6 +17,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_started
+      mailhog:
+        condition: service_started
     restart: unless-stopped
     networks:
       - ecommerce-network
@@ -61,6 +63,16 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - ecommerce-network
+
+  # MailHog — catches outbound emails; UI at http://localhost:8025
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: ecommerce-mailhog
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI
     networks:
       - ecommerce-network
 

@@ -5,6 +5,9 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 public class CartDTO {
     private Long cartId;
     private List<CartItemDTO> items;
@@ -12,7 +15,10 @@ public class CartDTO {
     private int totalItems;
 
     public static CartDTO from(Cart cart) {
-        System.out.println("CartDTO from" + cart.getId());
+        log.info("CartDTO from service {}", cart);
+        log.info("CartDTO from {}", cart.getId());
+        log.info("CartDTO items {}", cart.getItems());
+
         CartDTO dto = new CartDTO();
         dto.cartId = cart.getId();
         dto.items = cart.getItems().stream()

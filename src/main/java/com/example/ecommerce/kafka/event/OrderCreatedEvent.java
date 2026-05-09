@@ -36,6 +36,8 @@ public class OrderCreatedEvent {
         private int quantity;
         private BigDecimal unitPrice;
 
+        public OrderItemEvent() {}
+
         public OrderItemEvent(String productName, int quantity,
                               java.math.BigDecimal unitPrice) {
             this.productName = productName;
@@ -44,8 +46,11 @@ public class OrderCreatedEvent {
         }
 
         public String getProductName() { return productName; }
+        public void setProductName(String productName) { this.productName = productName; }
         public int getQuantity() { return quantity; }
+        public void setQuantity(int quantity) { this.quantity = quantity; }
         public java.math.BigDecimal getUnitPrice() { return unitPrice; }
+        public void setUnitPrice(java.math.BigDecimal unitPrice) { this.unitPrice = unitPrice; }
     }
 
     // Getters

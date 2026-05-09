@@ -6,16 +6,13 @@ import com.example.ecommerce.repository.PaymentRepository;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 public class PaymentService {
-
-    private static final Logger log =
-        LoggerFactory.getLogger(PaymentService.class);
 
     private final PaymentRepository paymentRepository;
     // In a real system, inject a PaymentGatewayClient here
