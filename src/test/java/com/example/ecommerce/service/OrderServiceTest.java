@@ -60,12 +60,12 @@ class OrderServiceTest {
     void checkout_shouldCreateOrderSuccessfully() {
         // Arrange
         CheckoutRequest request = new CheckoutRequest();
-        request.setShippingAddressId(null); // simplified
+        request.setShippingAddressId(null); // matches testAddress (unpersisted, id=null)
         request.setIdempotencyKey("unique-key-123");
         request.setPaymentToken("tok_valid");
 
         when(orderRepository.findByIdempotencyKey("unique-key-123"))
-            .thenReturn(Optional.empty()); // not a duplicate
+            .thenReturn(Optional.empty());
 
         when(customerRepository.findByIdWithCart(1L))
             .thenReturn(Optional.of(testCustomer));
@@ -76,9 +76,14 @@ class OrderServiceTest {
         when(savedOrder.getItems()).thenReturn(java.util.List.of());
         when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
 
-        // Act — this would need address setup to work end to end
-        // Showing test structure; full test needs complete setup
-        verify(inventoryService, never()).reserveStock(any(), anyInt());
+        // Act
+        OrderDTO result = orderService.checkout(1L, request);
+
+        // Assert
+        assertThat(result.getOrderNumber()).isEqualTo("ORD-ABC123");
+        verify(inventoryService).reserveStock(any(), eq(2));
+        verify(paymentService).processPayment(any(), eq("tok_valid"));
+        verify(eventPublisher).publishOrderCreated(any());
     }
 
     @Test

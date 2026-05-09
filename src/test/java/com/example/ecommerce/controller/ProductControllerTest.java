@@ -1,13 +1,17 @@
 package com.example.ecommerce.controller;
 
+import com.example.ecommerce.config.SecurityConfig;
 import com.example.ecommerce.dto.response.ProductDTO;
 import com.example.ecommerce.exception.ResourceNotFoundException;
+import com.example.ecommerce.security.JwtTokenProvider;
+import com.example.ecommerce.security.UserDetailsServiceImpl;
 import com.example.ecommerce.service.ProductService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.*;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -15,12 +19,15 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.util.List;
 
+import org.springframework.test.util.ReflectionTestUtils;
+
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(ProductController.class)
+@Import(SecurityConfig.class)
 class ProductControllerTest {
 
     @Autowired
@@ -32,10 +39,16 @@ class ProductControllerTest {
     @MockBean
     private ProductService productService;
 
+    @MockBean
+    private JwtTokenProvider jwtTokenProvider;
+
+    @MockBean
+    private UserDetailsServiceImpl userDetailsService;
+
     @Test
     void search_shouldReturn200_withProductList() throws Exception {
         ProductDTO product = buildProductDTO(1L, "Laptop", new BigDecimal("999.99"));
-        Page<ProductDTO> page = new PageImpl<>(List.of(product));
+        Page<ProductDTO> page = new PageImpl<>(List.of(product), PageRequest.of(0, 20), 1);
         when(productService.search(anyString(), anyInt(), anyInt()))
             .thenReturn(page);
 
@@ -113,14 +126,11 @@ class ProductControllerTest {
             .andExpect(jsonPath("$.errors").isArray());
     }
 
-    private ProductDTO buildProductDTO(Long id, String name,
-                                        BigDecimal price) {
-        // Use reflection or a test builder to set fields
-        // (ProductDTO uses static factory in prod code)
-        // For tests, a simple subclass or builder pattern works
-        return new ProductDTO() {{
-            // anonymous subclass approach for test
-        }};
-        // In practice use Mockito's answer or a TestDataBuilder class
+    private ProductDTO buildProductDTO(Long id, String name, BigDecimal price) {
+        ProductDTO dto = new ProductDTO();
+        ReflectionTestUtils.setField(dto, "id", id);
+        ReflectionTestUtils.setField(dto, "name", name);
+        ReflectionTestUtils.setField(dto, "price", price);
+        return dto;
     }
 }

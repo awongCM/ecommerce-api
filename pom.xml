@@ -20,6 +20,9 @@
     <properties>
         <java.version>17</java.version>
         <resilience4j.version>2.1.0</resilience4j.version>
+        <!-- Byte Buddy 1.14.x (bundled with Spring Boot 3.2) only supports up to Java 22.
+             Override to 1.15.x which officially supports Java 23+ including Java 25. -->
+        <byte-buddy.version>1.15.11</byte-buddy.version>
     </properties>
 
     <dependencies>

@@ -11,6 +11,7 @@ import org.springframework.data.domain.*;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.Objects;
 
 @Service
 public class OrderService {
@@ -75,7 +76,7 @@ public class OrderService {
         }
 
         Address shippingAddress = customer.getAddresses().stream()
-            .filter(a -> a.getId().equals(request.getShippingAddressId()))
+            .filter(a -> Objects.equals(a.getId(), request.getShippingAddressId()))
             .findFirst()
             .orElseThrow(() ->
                 new ResourceNotFoundException("Address",
@@ -142,7 +143,7 @@ public class OrderService {
             .orElseThrow(() -> new ResourceNotFoundException("Order", orderId));
 
         // Customers can only view their own orders
-        if (!order.getCustomer().getId().equals(customerId)) {
+        if (!Objects.equals(order.getCustomer().getId(), customerId)) {
             throw new AccessDeniedException("Not your order");
         }
 

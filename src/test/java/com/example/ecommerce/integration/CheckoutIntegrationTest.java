@@ -3,10 +3,13 @@ package com.example.ecommerce.integration;
 import com.example.ecommerce.dto.request.*;
 import com.example.ecommerce.dto.response.*;
 import com.example.ecommerce.domain.*;
+import com.example.ecommerce.kafka.OrderEventPublisher;
 import com.example.ecommerce.repository.*;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.*;
 import org.springframework.test.annotation.DirtiesContext;
@@ -22,14 +25,31 @@ class CheckoutIntegrationTest {
     @Autowired
     private TestRestTemplate restTemplate;
 
+    @MockBean
+    private OrderEventPublisher orderEventPublisher;
+
     @Autowired
     private CustomerRepository customerRepository;
+
+    @Autowired
+    private AddressRepository addressRepository;
 
     @Autowired
     private ProductRepository productRepository;
 
     @Autowired
     private CategoryRepository categoryRepository;
+
+    private Long seededProductId;
+
+    @BeforeEach
+    void seedProduct() {
+        Category category = categoryRepository.save(new Category("Electronics"));
+        Product product = productRepository.save(new Product(
+            "Test Widget", "A test product",
+            new BigDecimal("29.99"), 100, category, "SKU-TEST-001"));
+        seededProductId = product.getId();
+    }
 
     @Test
     void fullCheckoutFlow_shouldSucceed() {
@@ -50,6 +70,12 @@ class CheckoutIntegrationTest {
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
 
+        // 1b. Seed a shipping address for Alice
+        Customer alice = customerRepository.findByEmail("alice@test.com").orElseThrow();
+        Address address = addressRepository.save(
+            new Address(alice, "1 Test St", "Sydney", "NSW", "2000", "AU"));
+        Long shippingAddressId = address.getId();
+
         // 2. Browse products (public — no auth needed)
         ResponseEntity<String> productsResponse = restTemplate.getForEntity(
             "/api/v1/products", String.class);
@@ -57,7 +83,7 @@ class CheckoutIntegrationTest {
 
         // 3. Add item to cart
         AddToCartRequest cartRequest = new AddToCartRequest();
-        cartRequest.setProductId(1L); // assumes seeded product
+        cartRequest.setProductId(seededProductId);
         cartRequest.setQuantity(2);
 
         ResponseEntity<CartDTO> cartResponse = restTemplate.exchange(
@@ -70,7 +96,7 @@ class CheckoutIntegrationTest {
 
         // 5. Checkout
         CheckoutRequest checkout = new CheckoutRequest();
-        checkout.setShippingAddressId(1L);
+        checkout.setShippingAddressId(shippingAddressId);
         checkout.setIdempotencyKey(UUID.randomUUID().toString());
         checkout.setPaymentToken("tok_test_valid");
 

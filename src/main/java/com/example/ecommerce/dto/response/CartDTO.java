@@ -12,6 +12,7 @@ public class CartDTO {
     private int totalItems;
 
     public static CartDTO from(Cart cart) {
+        System.out.println("CartDTO from" + cart.getId());
         CartDTO dto = new CartDTO();
         dto.cartId = cart.getId();
         dto.items = cart.getItems().stream()

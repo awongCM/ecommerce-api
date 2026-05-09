@@ -26,7 +26,9 @@ public class CartController {
     @GetMapping
     public ResponseEntity<CartDTO> getCart(
             @AuthenticationPrincipal UserDetails user) {
+        System.out.println("getCart" + user.getUsername());
         Long customerId = resolveCustomerId(user.getUsername());
+        System.out.println("customerId" + customerId);
         return ResponseEntity.ok(cartService.getCart(customerId));
     }
 

@@ -26,6 +26,8 @@ public class CartService {
 
     @Transactional(readOnly = true)
     public CartDTO getCart(Long customerId) {
+        System.out.println("getCartService" + customerId);
+        System.out.println("cartRepository" + cartRepository);
         Cart cart = cartRepository.findByCustomerIdWithItems(customerId)
             .orElseThrow(() ->
                 new ResourceNotFoundException("Cart for customer", customerId));

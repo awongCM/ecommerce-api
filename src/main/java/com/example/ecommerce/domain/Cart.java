@@ -31,6 +31,8 @@ public class Cart {
     }
 
     public void addItem(Product product, int quantity) {
+        System.out.println("addItem" + product.getId());
+        System.out.println("addItem" + quantity);
         Optional<CartItem> existing = items.stream()
             .filter(i -> i.getProduct().getId().equals(product.getId()))
             .findFirst();

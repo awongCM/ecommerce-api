@@ -97,17 +97,4 @@ public class SecurityConfig {
     public SecurityEvaluationContextExtension securityExtension() {
         return new SecurityEvaluationContextExtension();
     }
-
-    @Bean
-    public org.springframework.data.domain.AuditorAware<String> auditorProvider() {
-        return () -> {
-            var auth = org.springframework.security.core.context
-                .SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !auth.isAuthenticated() ||
-                auth.getPrincipal().equals("anonymousUser")) {
-                return java.util.Optional.of("system");
-            }
-            return java.util.Optional.of(auth.getName());
-        };
-    }
 }
