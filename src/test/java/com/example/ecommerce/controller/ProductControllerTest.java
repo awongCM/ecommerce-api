@@ -19,8 +19,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.util.List;
 
-import org.springframework.test.util.ReflectionTestUtils;
-
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -127,10 +125,6 @@ class ProductControllerTest {
     }
 
     private ProductDTO buildProductDTO(Long id, String name, BigDecimal price) {
-        ProductDTO dto = new ProductDTO();
-        ReflectionTestUtils.setField(dto, "id", id);
-        ReflectionTestUtils.setField(dto, "name", name);
-        ReflectionTestUtils.setField(dto, "price", price);
-        return dto;
+        return new ProductDTO(id, name, price);
     }
 }

@@ -15,6 +15,14 @@ public class ProductDTO {
     private boolean active;
     private LocalDateTime createdAt;
 
+    public ProductDTO() {}
+
+    public ProductDTO(Long id, String name, BigDecimal price) {
+        this.id = id;
+        this.name = name;
+        this.price = price;
+    }
+
     // Static factory — converts entity to DTO
     public static ProductDTO from(Product p) {
         ProductDTO dto = new ProductDTO();
