@@ -97,6 +97,5 @@ class AddressControllerTest {
             .andExpect(jsonPath("$.state").value("NSW"))
             .andExpect(jsonPath("$.postcode").value("2000"))
             .andExpect(jsonPath("$.country").value("AU"));
-            // .andExpect(jsonPath("$.isDefault").value(false));
     }
 }
