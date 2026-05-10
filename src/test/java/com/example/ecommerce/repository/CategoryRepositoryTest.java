@@ -9,7 +9,6 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 
-import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,14 +41,6 @@ class CategoryRepositoryTest {
     }
 
     // --- findByParentIsNull ---
-
-    @Test
-    void findByParentIsNull_list_shouldReturnOnlyTopLevelCategories() {
-        List<Category> result = categoryRepository.findByParentIsNull();
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getName()).isEqualTo("Electronics");
-    }
 
     @Test
     void findByParentIsNull_paged_shouldReturnPageOfTopLevelCategories() {

@@ -10,18 +10,12 @@ import org.springframework.data.domain.Pageable;
 import java.util.List;
 import java.util.Optional;
 
+
 @Repository
 public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     Optional<Category> findByName(String name);
-    // TODO: to decide if we need list function or not
-    // List<Category> findByParentIsNull();
-
     Page<Category> findByParentIsNull(Pageable pageable);
-    
-    // TODO: to decide if we need list function or not
-    // List<Category> findByParentId(Long parentId);
-    
     Page<Category> findByParentId(Long parentId, Pageable pageable);
     boolean existsByName(String name);
 
