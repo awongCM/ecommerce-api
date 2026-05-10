@@ -31,7 +31,7 @@ class ProductControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @Autowired
+    @Autowired  
     private ObjectMapper objectMapper;
 
     @MockBean

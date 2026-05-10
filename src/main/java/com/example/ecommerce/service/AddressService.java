@@ -94,7 +94,6 @@ public class AddressService {
 
     private Address findOwned(Long customerId, Long addressId) {
         return addressRepository.findByIdAndCustomerId(addressId, customerId)
-            .orElseThrow(() -> new ResourceNotFoundException(
-                "Address not found or does not belong to this customer"));
+            .orElseThrow(() -> new ResourceNotFoundException("Address not found or does not belong to this customer"));
     }
 }

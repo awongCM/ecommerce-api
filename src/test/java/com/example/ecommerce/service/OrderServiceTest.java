@@ -66,7 +66,7 @@ class OrderServiceTest {
 
         when(orderRepository.findByIdempotencyKey("unique-key-123"))
             .thenReturn(Optional.empty());
-
+        
         when(customerRepository.findByIdWithCart(1L))
             .thenReturn(Optional.of(testCustomer));
 
