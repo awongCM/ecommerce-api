@@ -13,6 +13,8 @@ A production-grade RESTful ecommerce API built with Spring Boot 3.x.
 
 ## Architecture
 
+Design heuristics (layering, transactions, security, testing) live in [ARCHITECTURE.md](./ARCHITECTURE.md).
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              CLIENTS                                        │
@@ -27,11 +29,12 @@ A production-grade RESTful ecommerce API built with Spring Boot 3.x.
 │  ┌────────────────────┐  │       │  ┌────────────────────┐  │
 │  │ AuthController     │  │       │  │ ProductResource    │  │
 │  │ ProductController  │  │       │  │ OrderResource      │  │
-│  │ CartController     │  │       │  │                    │  │
-│  │ OrderController    │  │       │  │ JerseyAuthFilter   │  │
-│  │ AdminController    │  │       │  │ JerseyExceptionMap │  │
+│  │ CategoryController │  │       │  │                    │  │
+│  │ AddressController  │  │       │  │ JerseyAuthFilter   │  │
+│  │ CartController     │  │       │  │ JerseyExceptionMap │  │
+│  │ OrderController    │  │       │  │                    │  │
+│  │ AdminController    │  │       │  │                    │  │
 │  └────────────────────┘  │       │  └────────────────────┘  │
-│                          │       │  └────────────────────┘  │
 │  GlobalExceptionHandler  │       │                          │
 └──────────┬───────────────┘       └──────────┬───────────────┘
            │                                  │
@@ -62,7 +65,9 @@ A production-grade RESTful ecommerce API built with Spring Boot 3.x.
 │  ┌────────────────┐  ┌────────────────┐  ┌──────────────┐   │
 │  │InventoryService│  │ PaymentService │  │ AuditService │   │
 │  │ @Retryable     │  │ @CircuitBreaker│  │ @Async       │   │
-│  │ @Version (OL)  │  │ REQUIRES_NEW   │  │              │   │
+│  │ @Version (OL)  │  │ @Transactional │  │              │   │
+│  │                │  │ (REQUIRED: same │  │              │   │
+│  │                │  │ TX as checkout)│  │              │   │
 │  └────────────────┘  └───────┬────────┘  └──────────────┘   │
 │                              │                               │
 └──────────────┬───────────────┼───────────────────────────────┘
@@ -72,18 +77,21 @@ A production-grade RESTful ecommerce API built with Spring Boot 3.x.
 │  PERSISTENCE LAYER   │  │  EXTERNAL SERVICES               │
 │                      │  │                                    │
 │  Spring Data JPA     │  │  Payment Gateway (mock)           │
-│  6 Repositories:     │  │  ┌────────────────────────────┐   │
+│  9 repositories      │  │  ┌────────────────────────────┐   │
 │  ┌────────────────┐  │  │  │ Resilience4j               │   │
 │  │ CustomerRepo   │  │  │  │ • CircuitBreaker: 50%/10   │   │
 │  │ ProductRepo    │  │  │  │ • Retry: 3 attempts        │   │
-│  │ CartRepo       │  │  │  │ • RateLimiter: 100/sec     │   │
-│  │ OrderRepo      │  │  │  └────────────────────────────┘   │
-│  │ PaymentRepo    │  │  │                                    │
-│  │ AuditLogRepo   │  │  └──────────────────────────────────┘
+│  │ CategoryRepo   │  │  │  │ • RateLimiter: 100/sec     │   │
+│  │ CartRepo       │  │  │  └────────────────────────────┘   │
+│  │ OrderRepo      │  │  │                                    │
+│  │ PaymentRepo    │  │  └──────────────────────────────────┘
+│  │ AuditLogRepo   │  │
+│  │ AddressRepo    │  │
+│  │ PwdResetTokRepo│  │
 │  └────────────────┘  │
 │                      │
-│  Flyway Migrations   │
-│  V1-V4 (DDL)        │
+│  Flyway migrations   │
+│  V1–V5 (DDL)        │
 └──────────┬───────────┘
            │
            ▼
@@ -95,7 +103,8 @@ A production-grade RESTful ecommerce API built with Spring Boot 3.x.
 │                                           │
 │  Tables: customers, addresses, products, │
 │  categories, carts, cart_items, orders,  │
-│  order_items, payments, audit_logs       │
+│  order_items, payments, audit_logs,      │
+│  password_reset_tokens                   │
 └──────────────────────────────────────────┘
 
                ┌──────────────────────────────────────────┐
@@ -174,6 +183,25 @@ GET  /api/v1/products        — Search with ?q=term
 GET  /api/v1/products/{id}   — Get product detail
 POST /api/v1/products        — Create (SELLER only)
 
+### Categories
+Public read access under `/api/v1/categories` (`SecurityConfig`). Create/update/delete require **SELLER** or **ADMIN** (`@PreAuthorize` on mutating routes).
+
+GET    /api/v1/categories              — Top-level categories (paginated: `?page=&size=`)
+GET    /api/v1/categories/{id}        — Category detail
+GET    /api/v1/categories/{id}/subcategories — Child categories (paginated)
+POST   /api/v1/categories             — Create (SELLER or ADMIN)
+PUT    /api/v1/categories/{id}        — Update (SELLER or ADMIN)
+DELETE /api/v1/categories/{id}        — Delete (SELLER or ADMIN)
+
+### Addresses (authenticated)
+Scoped to the logged-in customer (JWT → `UserDetails` → email → customer id).
+
+GET    /api/v1/addresses       — List my addresses
+POST   /api/v1/addresses       — Create address
+PUT    /api/v1/addresses/{id}  — Update address
+PATCH  /api/v1/addresses/{id}/default — Set default address
+DELETE /api/v1/addresses/{id}  — Delete address
+
 ### Cart (authenticated)
 GET    /api/v1/cart           — View cart
 POST   /api/v1/cart/items     — Add item
@@ -207,9 +235,11 @@ GET  /jersey/products         — Same logic, JAX-RS annotations
 POST /jersey/orders/checkout  — Same logic, Jersey filter auth
 
 ### Observability
-GET /actuator/health          — Health check
-GET /actuator/inventory       — Low stock report (admin)
-GET /actuator/metrics         — Prometheus metrics
+GET /actuator/health              — Full health (includes payment gateway indicator)
+GET /actuator/health/liveness     — Liveness probe (JVM up)
+GET /actuator/health/readiness    — Readiness probe (DB, etc.; gateway excluded)
+GET /actuator/inventory           — Low stock report (admin)
+GET /actuator/metrics             — Prometheus metrics
 
 ## Known Gaps / TODO
 
@@ -225,8 +255,8 @@ no way to create the first admin through the API (chicken-and-egg problem).
   No hardcoded credentials in source code.
 
 - [ ] **Option B — Flyway seed migration (simple, good for dev)**
-  Add `V5__seed_admin.sql` that inserts a bcrypt-hashed admin account. Suitable for
-  local development; avoid hardcoding real credentials for production.
+  Add a new migration (for example `V6__seed_admin.sql`) that inserts a bcrypt-hashed admin account. Suitable for
+  local development; avoid hardcoding real credentials for production. (`V5` is already used for `password_reset_tokens`.)
 
 - [ ] **Option C — Both** — Flyway migration for dev profile, `DataInitializer` for prod.
 
@@ -243,8 +273,11 @@ SELECT id, 'ADMIN' FROM customers WHERE email = 'admin@example.com';
 ---
 
 ## Key Design Decisions
-- Idempotent checkout prevents duplicate orders
-- @Version on Product prevents inventory oversell
-- REQUIRES_NEW on PaymentService isolates payment DB record
-- @Async on AuditService never slows the main request
-- Soft delete on Products preserves order history integrity
+- Idempotent checkout prevents duplicate orders (`idempotencyKey` on `POST /api/v1/orders/checkout`)
+- `@Version` on `Product` plus retries on optimistic-lock failures reduces oversell under concurrency
+- `PaymentService` uses default **`@Transactional` propagation (`REQUIRED`)** so payment rows are written in the **same transaction** as checkout; separate transactions risk FK violations against the not-yet-visible order row
+- JWT authentication stores a **`UserDetails` principal** in the security context (not only the email string) so authenticated controllers resolve the user reliably
+- Kafka event payloads (`OrderCreatedEvent` and nested types) stay Jackson-friendly (constructors/setters as needed for deserialization)
+- `@Async` on `AuditService` keeps audit persistence off the critical request path
+- Soft delete on products preserves order history integrity
+
