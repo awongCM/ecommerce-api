@@ -61,13 +61,4 @@ public class Address {
     public boolean isDefault() { return isDefault; }
     public void setDefault(boolean d) { this.isDefault = d; }
 
-    public Address orElseThrow(Object object) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'orElseThrow'");
-    }
-
-    public Address orElseThrow(Object object) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'orElseThrow'");
-    }
 }
