@@ -1,0 +1,14 @@
+---
+description: Kafka events, payment/inventory resilience, checkout transaction boundaries
+globs: "**/kafka/**/*.java,**/PaymentService.java,**/InventoryService.java,**/OrderService.java,**/OrderEventPublisher.java,**/application.yml,**/application-*.yml"
+alwaysApply: false
+---
+
+# Messaging and resilience
+
+- **Kafka:** Event DTOs must be **Jackson-serializable** (constructors/setters as needed for consumers). Publishing fits the existing checkout/event flow unless designing a new pattern (document in ARCHITECTURE if so).
+- **Resilience4j:** Keep circuit breaker / retry / limits on **external-style** boundaries (e.g. payment gateway), consistent with **application.yml** instance names.
+- **Checkout:** Do **not** “fix” failures by moving payment to **`REQUIRES_NEW`** without an explicit outbox/saga-style design — it can break FK visibility vs the order transaction (see ARCHITECTURE).
+- **Inventory:** Respect **`@Version`** and existing **`@Retryable`** behavior on optimistic lock conflicts.
+
+See **ARCHITECTURE.md** (“Transactions and consistency”, “Messaging”, “Resilience”).

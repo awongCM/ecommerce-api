@@ -1,0 +1,14 @@
+---
+description: JWT, SecurityConfig, method security, Jersey auth alignment
+globs: "**/security/**/*.java,**/config/SecurityConfig.java,**/jersey/*Filter*.java,**/jersey/Jersey*.java"
+alwaysApply: false
+---
+
+# Security
+
+- **Model:** Stateless JWT; principal should remain **`UserDetails`-compatible** (not a bare string) for consistent resolution in controllers and filters.
+- **Authorization:** Coarse rules in **`SecurityConfig`** (URL matchers); use **`@PreAuthorize`** when ownership or fine-grained rules matter.
+- **Jersey:** Auth and behavior should stay consistent with the Spring Security model where endpoints overlap.
+- **Actuator / admin:** Treat path exposure as sensitive; do not widen access without explicit intent.
+
+See **ARCHITECTURE.md** (“Security rules”).

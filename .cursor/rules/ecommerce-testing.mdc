@@ -1,0 +1,14 @@
+---
+description: Test slices — Mockito services, WebMvcTest controllers, DataJpaTest repos, SpringBootTest sparingly
+globs: "**/src/test/**/*.java"
+alwaysApply: false
+---
+
+# Testing
+
+- **Services:** Mockito, **`@ExtendWith(MockitoExtension.class)`**; exercise branches and transaction-adjacent behavior where mocked.
+- **Controllers:** **`@WebMvcTest`**; mock services and security-related beans as in existing tests; **`@WithMockUser`** when simulating authenticated roles.
+- **Repositories:** **`@DataJpaTest`**; use **`flush`** / **`clear`** when asserting database-visible state vs first-level cache.
+- **Integration:** **`@SpringBootTest`** only for critical paths (e.g. checkout), full wiring, keep count small.
+
+Match patterns in existing tests under `src/test/java/com/example/ecommerce/`. See **ARCHITECTURE.md** (“Testing strategy”).

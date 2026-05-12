@@ -1,0 +1,14 @@
+---
+description: Thin controllers, services own use cases, DTOs and exceptions at boundaries
+globs: "**/controller/**/*.java,**/service/**/*.java,**/exception/**/*.java,**/jersey/**/*.java"
+alwaysApply: false
+---
+
+# Layering (MVC and Jersey)
+
+- **Controllers / Jersey resources:** Map HTTP, bind validation, call **one** service (or obvious coordination), return DTOs. No business rules, no direct use of another feature’s repository.
+- **Services:** Own transactions (`@Transactional` on service methods unless a rare, documented exception). Orchestrate repositories, domain rules, Kafka, resilience calls as already modeled.
+- **DTOs:** Request/response types under `dto/request` and `dto/response`; keep JPA entities off the wire.
+- **Exceptions:** Throw typed project exceptions from domain/service code; HTTP mapping lives in **`GlobalExceptionHandler`**.
+
+See **ARCHITECTURE.md** (“Layering rules”, “Transactions and consistency”).

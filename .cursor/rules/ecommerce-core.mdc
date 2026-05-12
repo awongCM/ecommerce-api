@@ -1,0 +1,11 @@
+---
+description: Core repo identity — stack, docs, commands, dual HTTP surface
+alwaysApply: true
+---
+
+# ecommerce-api — core
+
+- **Build:** `mvn -q verify` (no Maven wrapper in repo; use local `mvn`).
+- **Docs:** Before non-trivial changes, skim **ARCHITECTURE.md** for layering, transactions, security, and testing. Use **README.md** for runbooks and endpoints; **DEPLOYMENT.md** for probes and env.
+- **APIs:** Spring MVC **`/api/v1`** is primary; Jersey **`/jersey`** mirrors selected flows. When you change behavior exposed in both, update both or document an intentional exception.
+- **Package:** `com.example.ecommerce`. Prefer small, focused diffs; do not refactor unrelated code.

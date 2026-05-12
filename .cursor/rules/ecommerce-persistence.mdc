@@ -1,0 +1,13 @@
+---
+description: Flyway-first schema, JPA entities and repositories aligned with migrations
+globs: "**/domain/**/*.java,**/repository/**/*.java,**/db/migration/**/*.sql"
+alwaysApply: false
+---
+
+# Persistence
+
+- **Schema:** Add or change tables/columns only via **Flyway** scripts under `src/main/resources/db/migration/`. Version monotonically; never rewrite applied migrations.
+- **Entities:** Keep `domain/` mappings, cascades, and constraints consistent with SQL (FKs, uniqueness, soft delete on products, etc.).
+- **Repositories:** Custom queries and `@Query` stay next to their aggregate; avoid leaking persistence details into controllers.
+
+See **ARCHITECTURE.md** (“Persistence and schema”, “Adding a feature”).
