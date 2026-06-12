@@ -96,4 +96,7 @@ public class Product {
     public String getCreatedBy() { return createdBy; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public Long getVersion() { return version; }
+    
+    // Anti-pattern: setId() is used to match testProduct (unpersisted, id=null). Only use for testing.
+    public void setId(Long id) { this.id = id; }
 }
