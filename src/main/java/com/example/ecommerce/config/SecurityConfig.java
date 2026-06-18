@@ -60,6 +60,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .requestMatchers("/actuator/**").hasRole("ADMIN")
 
+                // Stripe webhooks
+                .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/stripe").permitAll()
+
                 // All other endpoints require authentication
                 .anyRequest().authenticated()
             )

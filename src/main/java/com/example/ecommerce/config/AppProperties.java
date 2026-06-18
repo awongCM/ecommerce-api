@@ -12,6 +12,7 @@ public class AppProperties {
 
     private Jwt jwt = new Jwt();
     private PaymentGateway paymentGateway = new PaymentGateway();
+    private Stripe stripe = new Stripe();
     private int maxCartItems = 50;
     private BigDecimal maxOrderAmount = BigDecimal.valueOf(10000);
 
@@ -30,17 +31,35 @@ public class AppProperties {
     public static class PaymentGateway {
         private String url;
         private int timeoutMs = 5000;
+        private String provider = "mock";
+        private String currency = "usd";
 
         public String getUrl() { return url; }
         public void setUrl(String url) { this.url = url; }
         public int getTimeoutMs() { return timeoutMs; }
         public void setTimeoutMs(int timeoutMs) { this.timeoutMs = timeoutMs; }
+        public String getProvider() { return provider; }
+        public void setProvider(String provider) { this.provider = provider; }
+        public String getCurrency() { return currency; }
+        public void setCurrency(String currency) { this.currency = currency; }
+    }
+
+    public static class Stripe {
+        private String secretKey;
+        private String webhookSecret;
+
+        public String getSecretKey() { return secretKey; }
+        public void setSecretKey(String secretKey) { this.secretKey = secretKey; }
+        public String getWebhookSecret() { return webhookSecret; }
+        public void setWebhookSecret(String webhookSecret) { this.webhookSecret = webhookSecret; }
     }
 
     public Jwt getJwt() { return jwt; }
     public void setJwt(Jwt jwt) { this.jwt = jwt; }
     public PaymentGateway getPaymentGateway() { return paymentGateway; }
     public void setPaymentGateway(PaymentGateway pg) { this.paymentGateway = pg; }
+    public Stripe getStripe() { return stripe; }
+    public void setStripe(Stripe stripe) { this.stripe = stripe; }
     public int getMaxCartItems() { return maxCartItems; }
     public void setMaxCartItems(int n) { this.maxCartItems = n; }
     public BigDecimal getMaxOrderAmount() { return maxOrderAmount; }

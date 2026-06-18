@@ -47,6 +47,7 @@ resilience4j:
           - java.io.IOException
           - java.net.ConnectException
           - java.util.concurrent.TimeoutException
+          - com.stripe.exception.ApiConnectionException
 
   ratelimiter:
     instances:
@@ -62,6 +63,11 @@ app:
   payment-gateway:
     url: ${PAYMENT_GATEWAY_URL:https://api.mock-payment.com}
     timeout-ms: 5000
+    provider: ${PAYMENT_GATEWAY_PROVIDER:mock}   # mock | stripe
+    currency: ${PAYMENT_CURRENCY:usd}
+  stripe:
+    secret-key: ${STRIPE_SECRET_KEY:}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
   max-cart-items: 50
   max-order-amount: 10000.00
   mail:

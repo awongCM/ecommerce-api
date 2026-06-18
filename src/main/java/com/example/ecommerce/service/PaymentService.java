@@ -1,11 +1,13 @@
 package com.example.ecommerce.service;
 
+import com.example.ecommerce.config.AppProperties;
 import com.example.ecommerce.domain.Order;
 import com.example.ecommerce.domain.Payment;
+import com.example.ecommerce.payment.PaymentCaptureResult;
+import com.example.ecommerce.payment.PaymentGatewayClient;
 import com.example.ecommerce.repository.PaymentRepository;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
-import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,10 +17,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class PaymentService {
 
     private final PaymentRepository paymentRepository;
-    // In a real system, inject a PaymentGatewayClient here
+    private final PaymentGatewayClient paymentGatewayClient;
+    private final AppProperties appProperties;
 
-    public PaymentService(PaymentRepository paymentRepository) {
+    public PaymentService(
+            PaymentRepository paymentRepository,
+            PaymentGatewayClient paymentGatewayClient,
+            AppProperties appProperties) {
         this.paymentRepository = paymentRepository;
+        this.paymentGatewayClient = paymentGatewayClient;
+        this.appProperties = appProperties;
     }
 
     /**
@@ -29,29 +37,26 @@ public class PaymentService {
      *   safely reference the just-created order row
      */
     @Transactional
-    @CircuitBreaker(name = "paymentGateway",
-                    fallbackMethod = "paymentFallback")
+    @CircuitBreaker(name = "paymentGateway", fallbackMethod = "paymentFallback")
     @Retry(name = "paymentGateway")
     public void processPayment(Order order, String paymentToken) {
         Payment payment = new Payment(
-            order,
-            order.getTotalAmount(),
-            order.getIdempotencyKey()
-        );
+            order, order.getTotalAmount(), order.getIdempotencyKey());
         payment = paymentRepository.save(payment);
 
         try {
-            // Simulate calling external payment gateway
-            String gatewayRef = callPaymentGateway(
-                paymentToken, order.getTotalAmount(), order.getIdempotencyKey());
+            PaymentCaptureResult result = paymentGatewayClient.capture(
+                paymentToken,
+                order.getTotalAmount(),
+                appProperties.getPaymentGateway().getCurrency(),
+                order.getIdempotencyKey());
 
-            // Store only last 4 digits of card — NEVER full number
-            payment.markCaptured(gatewayRef, "4242");
+            payment.markCaptured(result.gatewayReference(), result.cardLast4());
             paymentRepository.save(payment);
             order.setPayment(payment);
 
             log.info("Payment captured for order: {}, ref: {}",
-                order.getOrderNumber(), gatewayRef);
+                order.getOrderNumber(), result.gatewayReference());
 
         } catch (Exception e) {
             payment.markFailed();
@@ -66,15 +71,5 @@ public class PaymentService {
             order.getOrderNumber(), t.getMessage());
         throw new RuntimeException(
             "Payment gateway temporarily unavailable. Please try again later.");
-    }
-
-    private String callPaymentGateway(String token, java.math.BigDecimal amount,
-                                       String idempotencyKey) {
-        // Mock implementation — replace with real HTTP call
-        // e.g., Stripe, Adyen, Braintree SDK
-        if (token == null || token.isBlank()) {
-            throw new RuntimeException("Invalid payment token");
-        }
-        return "GW-" + System.currentTimeMillis();
     }
 }
