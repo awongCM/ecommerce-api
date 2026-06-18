@@ -5,7 +5,6 @@ import com.example.ecommerce.domain.enums.OrderStatus;
 import com.example.ecommerce.dto.request.CheckoutRequest;
 import com.example.ecommerce.dto.response.OrderDTO;
 import com.example.ecommerce.exception.ResourceNotFoundException;
-import com.example.ecommerce.kafka.OrderEventPublisher;
 import com.example.ecommerce.repository.*;
 import org.springframework.data.domain.*;
 import org.springframework.security.access.AccessDeniedException;
@@ -22,7 +21,7 @@ public class OrderService {
     private final InventoryService inventoryService;
     private final PaymentService paymentService;
     private final AuditService auditService;
-    private final OrderEventPublisher eventPublisher;
+    private final OutboxService outboxService;
 
     public OrderService(OrderRepository orderRepository,
                         CustomerRepository customerRepository,
@@ -30,14 +29,14 @@ public class OrderService {
                         InventoryService inventoryService,
                         PaymentService paymentService,
                         AuditService auditService,
-                        OrderEventPublisher eventPublisher) {
+                        OutboxService outboxService) {
         this.orderRepository = orderRepository;
         this.customerRepository = customerRepository;
         this.cartRepository = cartRepository;
         this.inventoryService = inventoryService;
         this.paymentService = paymentService;
         this.auditService = auditService;
-        this.eventPublisher = eventPublisher;
+        this.outboxService = outboxService;
     }
 
     /**
@@ -48,7 +47,7 @@ public class OrderService {
      * 4. Create the order
      * 5. Process payment (with circuit breaker)
      * 6. Clear the cart
-     * 7. Publish event to Kafka
+     * 7. Enqueue order-created event (transactional outbox)
      * 8. Log to audit trail
      */
     @Transactional
@@ -119,8 +118,8 @@ public class OrderService {
 
         Order savedOrder = orderRepository.save(order);
 
-        // 7. Publish async event to Kafka — notifies downstream services
-        eventPublisher.publishOrderCreated(savedOrder);
+        // 7. Outbox row commits with the order; OutboxPoller publishes to Kafka
+        outboxService.enqueueOrderCreated(savedOrder);
 
         // 8. Async audit log — does not block the response
         auditService.log("Order", savedOrder.getId().toString(),

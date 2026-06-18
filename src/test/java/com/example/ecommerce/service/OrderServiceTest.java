@@ -5,7 +5,6 @@ import com.example.ecommerce.domain.enums.OrderStatus;
 import com.example.ecommerce.dto.request.CheckoutRequest;
 import com.example.ecommerce.dto.response.OrderDTO;
 import com.example.ecommerce.exception.ResourceNotFoundException;
-import com.example.ecommerce.kafka.OrderEventPublisher;
 import com.example.ecommerce.repository.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,7 +29,7 @@ class OrderServiceTest {
     @Mock private InventoryService inventoryService;
     @Mock private PaymentService paymentService;
     @Mock private AuditService auditService;
-    @Mock private OrderEventPublisher eventPublisher;
+    @Mock private OutboxService outboxService;
 
     @InjectMocks
     private OrderService orderService;
@@ -86,7 +85,7 @@ class OrderServiceTest {
         assertThat(result.getOrderNumber()).isEqualTo("ORD-ABC123");
         verify(inventoryService).reserveStock(any(), eq(2));
         verify(paymentService).processPayment(any(), eq("tok_valid"));
-        verify(eventPublisher).publishOrderCreated(any());
+        verify(outboxService).enqueueOrderCreated(any());
     }
 
     @Test
@@ -108,7 +107,7 @@ class OrderServiceTest {
         // Assert — should not create new order or charge payment again
         verify(paymentService, never()).processPayment(any(), any());
         verify(inventoryService, never()).reserveStock(any(), anyInt());
-        verify(eventPublisher, never()).publishOrderCreated(any());
+        verify(outboxService, never()).enqueueOrderCreated(any());
     }
 
     @Test
@@ -196,7 +195,7 @@ class OrderServiceTest {
         assertThat(orderCaptor.getValue().getStatus()).isEqualTo(OrderStatus.CANCELLED);
 
         // Happy-path side effects must not run
-        verify(eventPublisher, never()).publishOrderCreated(any ());
+        verify(outboxService, never()).enqueueOrderCreated(any());
         verify(cartRepository, never()).save(any());
         verify(auditService, never()).log(anyString(), anyString(), anyString(), anyString(), anyString());
     }

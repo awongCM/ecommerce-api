@@ -3,6 +3,7 @@ package com.example.ecommerce.integration;
 import com.example.ecommerce.dto.request.*;
 import com.example.ecommerce.dto.response.*;
 import com.example.ecommerce.domain.*;
+import com.example.ecommerce.kafka.OutboxPoller;
 import com.example.ecommerce.kafka.OrderEventPublisher;
 import com.example.ecommerce.repository.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +28,9 @@ class CheckoutIntegrationTest {
 
     @MockBean
     private OrderEventPublisher orderEventPublisher;
+
+    @MockBean
+    private OutboxPoller outboxPoller;
 
     @Autowired
     private CustomerRepository customerRepository;
