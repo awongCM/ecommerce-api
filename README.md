@@ -59,7 +59,7 @@ Design heuristics (layering, transactions, security, testing) live in [ARCHITECT
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │                  OrderService                         │   │
 │  │  (checkout orchestrator: inventory → payment → cart   │   │
-│  │   → Kafka event → async audit)                        │   │
+│  │   → outbox enqueue → async audit)                     │   │
 │  └──────────────────────────────────────────────────────┘   │
 │                                                              │
 │  ┌────────────────┐  ┌────────────────┐  ┌──────────────┐   │
@@ -76,8 +76,8 @@ Design heuristics (layering, transactions, security, testing) live in [ARCHITECT
 ┌──────────────────────┐  ┌──────────────────────────────────┐
 │  PERSISTENCE LAYER   │  │  EXTERNAL SERVICES               │
 │                      │  │                                    │
-│  Spring Data JPA     │  │  Payment Gateway (mock)           │
-│  9 repositories      │  │  ┌────────────────────────────┐   │
+│  Spring Data JPA     │  │  Payment Gateway (mock | stripe)  │
+│  11 repositories     │  │  ┌────────────────────────────┐   │
 │  ┌────────────────┐  │  │  │ Resilience4j               │   │
 │  │ CustomerRepo   │  │  │  │ • CircuitBreaker: 50%/10   │   │
 │  │ ProductRepo    │  │  │  │ • Retry: 3 attempts        │   │
@@ -88,35 +88,39 @@ Design heuristics (layering, transactions, security, testing) live in [ARCHITECT
 │  │ AuditLogRepo   │  │
 │  │ AddressRepo    │  │
 │  │ PwdResetTokRepo│  │
+│  │ OutboxEventRepo│  │
+│  │ WebhookEventRepo│ │
 │  └────────────────┘  │
 │                      │
 │  Flyway migrations   │
-│  V1–V5 (DDL)        │
+│  V1–V7 (DDL)        │
 └──────────┬───────────┘
            │
            ▼
 ┌──────────────────────────────────────────┐
 │           DATABASE                        │
 │                                           │
-│  DEV:  H2 In-Memory (application-dev)    │
-│  PROD: PostgreSQL 15 (application-prod)  │
+│  DEV:  H2 in-memory (dev profile)        │
+│  DOCKER/K8S: PostgreSQL 15 (docker prof.)│
 │                                           │
 │  Tables: customers, addresses, products, │
 │  categories, carts, cart_items, orders,  │
 │  order_items, payments, audit_logs,      │
-│  password_reset_tokens                   │
+│  password_reset_tokens, outbox_events,   │
+│  processed_webhook_events                │
 └──────────────────────────────────────────┘
 
                ┌──────────────────────────────────────────┐
                │         EVENT-DRIVEN LAYER                │
                │                                           │
-  OrderService │  OrderEventPublisher                      │
-  ──publish──► │  ──► Kafka Topic: "orders.created"       │
+  OrderService │  OutboxService → outbox_events (same TX)  │
+  ──enqueue──► │  OutboxPoller → OrderEventPublisher       │
+               │  ──► Kafka Topic: "orders.created"       │
                │        │                                  │
                │        ▼                                  │
                │  NotificationConsumer                     │
                │  (groupId: notification-service)          │
-               │  ──► Email notification (mock)            │
+               │  ──► Order email (log mock; reset uses SMTP)│
                │                                           │
                │  KafkaConfig:                             │
                │  • Producer: acks=all, idempotent         │
@@ -164,8 +168,10 @@ docker-compose up -d
 
 - App: http://localhost:8080
 - Kafka UI: http://localhost:8090
-- H2 Console (dev): http://localhost:8080/h2-console
+- MailHog (password reset emails): http://localhost:8025
 - Swagger UI: http://localhost:8080/swagger-ui.html
+
+`docker-compose` activates the **`docker` profile** (PostgreSQL + Kafka + MailHog). The H2 console is available only when running with the **`dev` profile** (e.g. `mvn spring-boot:run` without Docker): http://localhost:8080/h2-console
 
 ### Docker notes
 - Build stage uses `maven:3.9-eclipse-temurin-17` — no Maven wrapper needed
@@ -175,13 +181,18 @@ docker-compose up -d
 ## API Endpoints
 
 ### Auth
-POST /api/v1/auth/register  — Register + auto-login
-POST /api/v1/auth/login     — Login, returns JWT
+POST /api/v1/auth/register       — Register + auto-login
+POST /api/v1/auth/login          — Login, returns JWT
+POST /api/v1/auth/forgot-password — Request password reset email (always 202)
+POST /api/v1/auth/reset-password  — Set new password from reset token
 
 ### Products (public browse)
-GET  /api/v1/products        — Search with ?q=term
-GET  /api/v1/products/{id}   — Get product detail
-POST /api/v1/products        — Create (SELLER only)
+GET    /api/v1/products                  — Search with ?q=term&page=&size=
+GET    /api/v1/products/{id}           — Get product detail
+GET    /api/v1/products/category/{id}  — Products in category (paginated)
+POST   /api/v1/products                  — Create (SELLER or ADMIN)
+PUT    /api/v1/products/{id}             — Update (SELLER or ADMIN)
+DELETE /api/v1/products/{id}             — Soft delete (SELLER or ADMIN)
 
 ### Categories
 Public read access under `/api/v1/categories` (`SecurityConfig`). Create/update/delete require **SELLER** or **ADMIN** (`@PreAuthorize` on mutating routes).
@@ -203,13 +214,16 @@ PATCH  /api/v1/addresses/{id}/default — Set default address
 DELETE /api/v1/addresses/{id}  — Delete address
 
 ### Cart (authenticated)
-GET    /api/v1/cart           — View cart
-POST   /api/v1/cart/items     — Add item
-DELETE /api/v1/cart/items/{id} — Remove item
+GET    /api/v1/cart                    — View cart
+POST   /api/v1/cart/items              — Add item
+DELETE /api/v1/cart/items/{productId}  — Remove item by product id
+DELETE /api/v1/cart                    — Clear cart
 
 ### Orders (authenticated)
-POST /api/v1/orders/checkout  — Checkout (idempotent)
-GET  /api/v1/orders           — My orders
+POST  /api/v1/orders/checkout       — Checkout (idempotent)
+GET   /api/v1/orders                — My orders (paginated)
+GET   /api/v1/orders/{id}           — Order detail (own orders only)
+PATCH /api/v1/orders/{id}/status    — Update status (ADMIN only)
 
 ### Admin (ADMIN role required)
 GET /api/v1/admin/users             — List all users (paginated: ?page=0&size=20)
@@ -230,9 +244,18 @@ curl -X PUT 'http://localhost:8080/api/v1/admin/users/5/roles' \
 - The last admin in the system cannot be demoted
 - All role changes are recorded in the audit log
 
+### Webhooks (Stripe, when `PAYMENT_GATEWAY_PROVIDER=stripe`)
+POST /api/v1/webhooks/stripe — Stripe signed webhook events (public)
+
 ### Jersey (JAX-RS equivalent)
-GET  /jersey/products         — Same logic, JAX-RS annotations
-POST /jersey/orders/checkout  — Same logic, Jersey filter auth
+GET    /jersey/products                  — Search (same logic as MVC)
+GET    /jersey/products/{id}             — Product detail
+GET    /jersey/products/category/{id}    — By category
+POST   /jersey/products                  — Create (authenticated seller)
+PUT    /jersey/products/{id}             — Update
+DELETE /jersey/products/{id}             — Delete
+POST   /jersey/orders/checkout           — Checkout
+GET    /jersey/orders/{id}               — Order detail
 
 ### Observability
 GET /actuator/health              — Full health (includes payment gateway indicator)
@@ -255,13 +278,17 @@ no way to create the first admin through the API (chicken-and-egg problem).
   No hardcoded credentials in source code.
 
 - [ ] **Option B — Flyway seed migration (simple, good for dev)**
-  Add a new migration (for example `V6__seed_admin.sql`) that inserts a bcrypt-hashed admin account. Suitable for
-  local development; avoid hardcoding real credentials for production. (`V5` is already used for `password_reset_tokens`.)
+  Add a new migration (for example `V8__seed_admin.sql`) that inserts a bcrypt-hashed admin account. Suitable for
+  local development; avoid hardcoding real credentials for production. (`V6`/`V7` are already used for outbox and webhook idempotency.)
 
 - [ ] **Option C — Both** — Flyway migration for dev profile, `DataInitializer` for prod.
 
-Until this is resolved, the workaround is to manually insert via the H2 console
-(`http://localhost:8080/h2-console`) or directly in the database:
+Until this is resolved, insert an admin manually in the database.
+
+**Docker Compose (PostgreSQL):**
+```bash
+docker exec -it ecommerce-postgres psql -U ecommerceuser -d ecommercedb
+```
 ```sql
 INSERT INTO customers (first_name, last_name, email, password_hash)
 VALUES ('Admin', 'User', 'admin@example.com', '<bcrypt-hash>');
@@ -270,14 +297,18 @@ INSERT INTO customer_roles (customer_id, role)
 SELECT id, 'ADMIN' FROM customers WHERE email = 'admin@example.com';
 ```
 
+**Dev profile (H2):** use the H2 console at http://localhost:8080/h2-console with the same SQL (JDBC URL from `application-dev.yml`).
+
 ---
 
 ## Key Design Decisions
 - Idempotent checkout prevents duplicate orders (`idempotencyKey` on `POST /api/v1/orders/checkout`)
 - `@Version` on `Product` plus retries on optimistic-lock failures reduces oversell under concurrency
 - `PaymentService` uses default **`@Transactional` propagation (`REQUIRED`)** so payment rows are written in the **same transaction** as checkout; separate transactions risk FK violations against the not-yet-visible order row
+- **Transactional outbox** — order-created Kafka events are written to `outbox_events` in the checkout transaction; `OutboxPoller` publishes asynchronously after commit
 - JWT authentication stores a **`UserDetails` principal** in the security context (not only the email string) so authenticated controllers resolve the user reliably
 - Kafka event payloads (`OrderCreatedEvent` and nested types) stay Jackson-friendly (constructors/setters as needed for deserialization)
 - `@Async` on `AuditService` keeps audit persistence off the critical request path
 - Soft delete on products preserves order history integrity
+- Payment provider is pluggable: **mock** (default) or **Stripe** via `app.payment-gateway.provider`; Stripe webhooks dedupe via `processed_webhook_events`
 

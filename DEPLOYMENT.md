@@ -8,11 +8,14 @@ This project follows the [12-factor app](https://12factor.net/config) principle:
 
 ## Environments
 
-| Environment | Purpose | Payment Gateway |
-|---|---|---|
-| **Local dev** | Development on your machine via `docker-compose` | Not set — mock URL fallback used, health indicator expected to be DOWN |
-| **Staging / UAT** | Integration & QA testing | Sandbox URL from payment provider (test keys, no real money) |
-| **Production** | Live traffic | Live gateway URL injected via secrets manager |
+| Environment | Purpose | Spring profile | Database | Payment gateway |
+|---|---|---|---|---|
+| **Local (Maven)** | `mvn spring-boot:run` on host | `dev` (default) | H2 in-memory | Mock (default); health may show DOWN |
+| **Local (Docker)** | `docker-compose up` | `docker` | PostgreSQL container | Mock (default); health may show DOWN |
+| **Staging / UAT** | Integration & QA | `docker` | Managed PostgreSQL | Mock URL or Stripe sandbox |
+| **Production** | Live traffic | `docker` (+ optional local `application-prod.yml`, gitignored) | Managed PostgreSQL | Stripe or live gateway URL |
+
+There is **no committed `application-prod.yml`**. Production-style deployments use the **`docker` profile** with env vars (or a gitignored local overlay). See `.gitignore`.
 
 ---
 
@@ -20,17 +23,27 @@ This project follows the [12-factor app](https://12factor.net/config) principle:
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `SPRING_PROFILES_ACTIVE` | Yes | `dev` | Active Spring profile (`dev`, `docker`, `prod`) |
+| `SPRING_PROFILES_ACTIVE` | Yes | `dev` | Active Spring profile (`dev`, `docker`) |
 | `SPRING_DATASOURCE_URL` | Yes (non-dev) | H2 in-memory | JDBC URL for PostgreSQL |
 | `SPRING_DATASOURCE_USERNAME` | Yes (non-dev) | — | Database username |
 | `SPRING_DATASOURCE_PASSWORD` | Yes (non-dev) | — | Database password |
 | `SPRING_KAFKA_BOOTSTRAP_SERVERS` | Yes (non-dev) | `localhost:9092` | Kafka broker address |
 | `JWT_SECRET` | Yes (all) | Dev placeholder | Secret key for signing JWT tokens — **must be changed in prod** |
-| `PAYMENT_GATEWAY_URL` | Staging + Prod | `https://api.mock-payment.com` | Base URL for the payment gateway |
+| `PAYMENT_GATEWAY_PROVIDER` | No | `mock` | `mock` or `stripe` |
+| `PAYMENT_GATEWAY_URL` | Mock deployments | `https://api.mock-payment.com` | Base URL for mock gateway health checks |
+| `PAYMENT_CURRENCY` | No | `usd` | Currency for Stripe PaymentIntents |
+| `STRIPE_SECRET_KEY` | Stripe | — | Stripe API secret key |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhooks | — | Stripe webhook signing secret |
+| `MAIL_FROM` | No | `noreply@ecommerce.example.com` | From address for password reset emails |
+| `APP_BASE_URL` | No | `http://localhost:3000` | Frontend base URL embedded in reset links |
+| `MAIL_HOST` | Docker | `mailhog` | SMTP host (MailHog in docker-compose) |
+| `MAIL_PORT` | Docker | `1025` | SMTP port |
 
 ---
 
 ## Local Development
+
+### Docker Compose (recommended)
 
 No env vars needed. Just run:
 
@@ -38,12 +51,20 @@ No env vars needed. Just run:
 docker-compose up -d
 ```
 
-The `docker` Spring profile is activated automatically via `docker-compose.yml`. PostgreSQL and Kafka run as containers. The payment gateway health indicator will show `DOWN` — this is expected and does not affect the app.
+The `docker` Spring profile is activated automatically via `docker-compose.yml`. PostgreSQL, Kafka, and MailHog run as containers. The payment gateway health indicator will show `DOWN` with the default mock provider — this is expected and does not affect the app.
 
 Health checks:
 - Liveness: http://localhost:8080/actuator/health/liveness
 - Readiness: http://localhost:8080/actuator/health/readiness
 - Full detail: http://localhost:8080/actuator/health
+
+### Maven on host (dev profile)
+
+Uses H2 and expects Kafka on `localhost:9092` (and MailHog on port 1025 for password reset emails if you run it separately):
+
+```bash
+mvn spring-boot:run
+```
 
 ---
 
@@ -58,12 +79,21 @@ SPRING_DATASOURCE_USERNAME=<from-secrets-manager>
 SPRING_DATASOURCE_PASSWORD=<from-secrets-manager>
 SPRING_KAFKA_BOOTSTRAP_SERVERS=<staging-kafka-host>:9092
 JWT_SECRET=<from-secrets-manager>
-PAYMENT_GATEWAY_URL=https://sandbox.your-payment-provider.com
+PAYMENT_GATEWAY_PROVIDER=stripe
+STRIPE_SECRET_KEY=<from-secrets-manager>
+STRIPE_WEBHOOK_SECRET=<from-secrets-manager>
+PAYMENT_CURRENCY=usd
+APP_BASE_URL=https://staging.example.com
+MAIL_FROM=noreply@staging.example.com
 ```
+
+For mock gateway testing instead of Stripe, omit Stripe vars and set `PAYMENT_GATEWAY_URL` to your sandbox/mock URL.
 
 ---
 
 ## Production (Kubernetes example)
+
+Use the **`docker` profile** with standard Spring datasource env vars (matches `application-docker.yml`):
 
 ```yaml
 env:
@@ -84,17 +114,35 @@ env:
       secretKeyRef:
         name: ecommerce-secrets
         key: datasource-password
+  - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+    valueFrom:
+      secretKeyRef:
+        name: ecommerce-secrets
+        key: kafka-bootstrap-servers
   - name: JWT_SECRET
     valueFrom:
       secretKeyRef:
         name: ecommerce-secrets
         key: jwt-secret
-  - name: PAYMENT_GATEWAY_URL
+  - name: PAYMENT_GATEWAY_PROVIDER
+    value: stripe
+  - name: STRIPE_SECRET_KEY
     valueFrom:
       secretKeyRef:
         name: ecommerce-secrets
-        key: payment-gateway-url
+        key: stripe-secret-key
+  - name: STRIPE_WEBHOOK_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: ecommerce-secrets
+        key: stripe-webhook-secret
+  - name: APP_BASE_URL
+    value: https://shop.example.com
+  - name: MAIL_FROM
+    value: noreply@shop.example.com
 ```
+
+See also [k8s/deployment.yaml](./k8s/deployment.yaml) for probe and resource settings.
 
 ---
 

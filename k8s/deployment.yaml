@@ -21,27 +21,48 @@ spec:
             - containerPort: 8080
           env:
             - name: SPRING_PROFILES_ACTIVE
-              value: prod
-            - name: DB_HOST
-              valueFrom:
-                configMapKeyRef:
-                  name: ecommerce-config
-                  key: db.host
-            - name: DB_USER
+              value: docker
+            - name: SPRING_DATASOURCE_URL
               valueFrom:
                 secretKeyRef:
                   name: ecommerce-secrets
-                  key: db.username
-            - name: DB_PASSWORD
+                  key: datasource-url
+            - name: SPRING_DATASOURCE_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: ecommerce-secrets
-                  key: db.password
+                  key: datasource-username
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ecommerce-secrets
+                  key: datasource-password
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                secretKeyRef:
+                  name: ecommerce-secrets
+                  key: kafka-bootstrap-servers
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: ecommerce-secrets
-                  key: jwt.secret
+                  key: jwt-secret
+            - name: PAYMENT_GATEWAY_PROVIDER
+              value: stripe
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ecommerce-secrets
+                  key: stripe-secret-key
+            - name: STRIPE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ecommerce-secrets
+                  key: stripe-webhook-secret
+            - name: APP_BASE_URL
+              value: https://shop.example.com
+            - name: MAIL_FROM
+              value: noreply@shop.example.com
 
           # Readiness: pod receives traffic only when app is ready
           readinessProbe:
