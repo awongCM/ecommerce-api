@@ -17,6 +17,30 @@ need docker
 need kubectl
 need colima
 
+colima_runtime() {
+  colima status 2>&1 | sed -n 's/.*runtime: \([^"]*\)".*/\1/p' | head -1
+}
+
+import_image() {
+  local runtime
+  runtime="$(colima_runtime)"
+
+  if [[ "${runtime}" == "docker" ]]; then
+    # Colima docker+k3s shares the Docker daemon — no ctr import needed.
+    echo "Colima runtime is docker; k3s uses local Docker images directly."
+    return 0
+  fi
+
+  echo "Importing image into k3s containerd (runtime: ${runtime:-unknown})..."
+  if docker save "${IMAGE}" | colima ssh -- sudo ctr -n k8s.io images import -; then
+    return 0
+  fi
+
+  echo "ctr import failed. If you use containerd runtime, try:" >&2
+  echo "  colima nerdctl --namespace k8s.io build -t ${IMAGE} ${ROOT}" >&2
+  exit 1
+}
+
 if ! colima status >/dev/null 2>&1; then
   echo "Starting Colima with Kubernetes..."
   colima start --kubernetes --cpu 4 --memory 6
@@ -29,8 +53,7 @@ fi
 echo "Building image ${IMAGE}..."
 docker build -t "${IMAGE}" "${ROOT}"
 
-echo "Importing image into k3s (Colima VM)..."
-docker save "${IMAGE}" | colima ssh -- sudo k3s ctr -n k8s.io images import -
+import_image
 
 echo "Applying manifests..."
 kubectl apply -k "${ROOT}/k8s/local"
