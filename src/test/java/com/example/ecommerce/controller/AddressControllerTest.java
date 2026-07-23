@@ -5,10 +5,10 @@ import com.example.ecommerce.domain.Address;
 import com.example.ecommerce.domain.Customer;
 import com.example.ecommerce.dto.request.AddressRequest;
 import com.example.ecommerce.dto.response.AddressDTO;
-import com.example.ecommerce.repository.CustomerRepository;
 import com.example.ecommerce.security.JwtTokenProvider;
 import com.example.ecommerce.security.UserDetailsServiceImpl;
 import com.example.ecommerce.service.AddressService;
+import com.example.ecommerce.service.CustomerLookupService;
 import org.springframework.http.MediaType;
 
 
@@ -21,7 +21,6 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
-import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -46,7 +45,7 @@ class AddressControllerTest {
     private UserDetailsServiceImpl userDetailsService;
 
     @MockBean
-    private CustomerRepository customerRepository;
+    private CustomerLookupService customerLookup;
 
     @Test
     @WithMockUser(username = "john@example.com", roles = "CUSTOMER")
@@ -54,9 +53,9 @@ class AddressControllerTest {
         Customer customer = new Customer("John", "Doe", "john@example.com", "hashedPassword");
         Address address = new Address(customer, "123 Main St", "Sydney", "NSW", "2000", "AU");
 
-        // Controller resolves customerId from email via customerRepository
-        when(customerRepository.findByEmail("john@example.com")).thenReturn(Optional.of(customer));
-        when(addressService.listAddresses(customer.getId()))
+        // Controller resolves customerId from email via CustomerLookupService
+        when(customerLookup.requireCustomerId("john@example.com")).thenReturn(1L);
+        when(addressService.listAddresses(1L))
             .thenReturn(List.of(AddressDTO.from(address)));
 
         mockMvc.perform(get("/api/v1/addresses"))
@@ -76,8 +75,8 @@ class AddressControllerTest {
     void createAddress_shouldReturn201_withAddress() throws Exception {
         Customer customer = new Customer("John", "Doe", "john@example.com", "hashedPassword");
         Address address = new Address(customer, "123 Main St", "Sydney", "NSW", "2000", "AU");
-        when(customerRepository.findByEmail("john@example.com")).thenReturn(Optional.of(customer));
-        when(addressService.createAddress(eq(customer.getId()), any(AddressRequest.class))).thenReturn(AddressDTO.from(address));
+        when(customerLookup.requireCustomerId("john@example.com")).thenReturn(1L);
+        when(addressService.createAddress(eq(1L), any(AddressRequest.class))).thenReturn(AddressDTO.from(address));
         
         mockMvc.perform(post("/api/v1/addresses")
             .contentType(MediaType.APPLICATION_JSON)

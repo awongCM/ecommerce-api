@@ -40,11 +40,11 @@ Security, persistence, and business logic are shared; only the web layer differs
 
 1. **Controllers stay thin** — Parse/validate input, call one service (or a small, obvious coordination), return DTOs. No business rules or direct multi-repository choreography.
 2. **Services own use cases** — Example: `OrderService.checkout` sequences inventory reservation, order persistence, payment, cart clearing, outbox enqueue, and audit. Cross-cutting failures are handled here with compensating steps where modeled (e.g. release stock on payment failure).
-3. **Repositories own persistence queries** — Custom finder methods and `@Query` live next to the aggregate they load; avoid leaking persistence concerns into controllers.
+3. **Repositories own persistence queries** — Custom finder methods and `@Query` live next to the aggregate they load; avoid leaking persistence concerns into controllers. **`CustomerLookupService`** is the one exception pattern for JWT email → customer id (still service-layer, not controller → repository).
 4. **DTOs at the boundary** — Request/response types isolate the REST contract from JPA entities (lazy loading, internal fields).
 5. **Exceptions are intentional** — Domain/service code throws typed exceptions (`ResourceNotFoundException`, etc.); `GlobalExceptionHandler` translates them to stable HTTP semantics.
 
-**Heuristic:** If logic appears in a controller or a controller reaches past its service into another feature’s repository, that is usually a layering leak.
+**Heuristic:** If logic appears in a controller or a controller reaches past its service into another feature’s repository, that is usually a layering leak — enforced by `ArchitectureTest` (ArchUnit).
 
 ---
 
@@ -125,10 +125,76 @@ Security, persistence, and business logic are shared; only the web layer differs
 |-------|----------------|---------|
 | Service | Mockito, `@ExtendWith(MockitoExtension.class)` | Business rules, branches, strict stubbing hygiene |
 | Controller | `@WebMvcTest` | HTTP mapping, status codes, security wiring; mock services and security beans (`JwtTokenProvider`, etc.); `@WithMockUser` for authenticated scenarios |
-| Repository | `@DataJpaTest` | Queries and mappings; use `flush`/`clear` when asserting DB-visible state vs first-level cache |
-| Full stack | `@SpringBootTest` + integration tests | Critical paths (e.g. checkout) with full wiring |
+| Repository | `@DataJpaTest` (H2) | Queries and mappings; use `flush`/`clear` when asserting DB-visible state vs first-level cache |
+| Integration | `@SpringBootTest` + **Testcontainers** (Postgres 15) | Critical paths (e.g. checkout) on the same DB engine as prod; see `AbstractPostgresIntegrationTest` |
+| Architecture | **ArchUnit** (`ArchitectureTest`) | Layering guardrails — web adapters must not touch repositories; no field `@Autowired` |
+| Concurrency | `@SpringBootTest` + multi-thread | Last-unit stock: `@Version` + `@Retryable` prevents oversell (`InventoryServiceConcurrencyTest`) |
 
-**Heuristic:** Unit tests prove **rules**; slice tests prove **adapters** (web, JPA); a small set of integration tests proves **end-to-end** behavior.
+**Heuristic:** Unit tests prove **rules**; slice tests prove **adapters** (web, JPA); integration tests prove **end-to-end** behavior on real Postgres; ArchUnit catches **layering drift**; concurrency tests prove **inventory safety** under parallel reservation.
+
+**Local note:** `CheckoutIntegrationTest` requires Docker (Testcontainers). On Colima, set `DOCKER_HOST` to the Colima socket; if Ryuk fails to start, `TESTCONTAINERS_RYUK_DISABLED=true` may be needed. Without Docker, the test is skipped (`disabledWithoutDocker = true`) and `mvn verify` still passes.
+
+---
+
+## Design decisions
+
+Short “why we did it this way” notes — useful for code review and interviews. Deeper mechanics live in the sections above.
+
+### Payment shares the checkout transaction (`REQUIRED`)
+
+**Problem:** A payment row has an FK to `orders`. If payment runs in a **separate** transaction (`REQUIRES_NEW`), the insert can run before the order row is visible to that transaction → FK violation or orphan payments.
+
+**Choice:** `PaymentService.processPayment` joins the caller’s transaction. Payment failure rolls back with the order attempt; success commits order + payment + outbox together.
+
+**Trade-off:** Longer transaction hold time while the gateway responds. Acceptable for this portfolio; at scale, consider saga/outbox for payment state or async capture after auth.
+
+### Transactional outbox instead of direct Kafka publish
+
+**Problem:** Dual-write — DB commits but Kafka publish fails (or the reverse) → inconsistent downstream state.
+
+**Choice:** `OutboxService.enqueueOrderCreated` writes a `PENDING` row in the **same transaction** as checkout. `OutboxPoller` publishes after commit and marks rows `SENT`.
+
+**Trade-offs:**
+- **At-least-once** delivery — consumers must dedupe (order number / idempotency key).
+- **Latency** — poll interval (default 5s) delays notifications.
+- **MVP limits** — async `kafkaTemplate.send` without awaiting ack; no `SELECT … FOR UPDATE SKIP LOCKED` for multi-instance pollers; retries increment `retry_count` without a `FAILED` cap yet.
+
+**Not done:** Debezium CDC or Kafka transactions — heavier; outbox table + poller is the standard interview answer.
+
+### `spring.jpa.open-in-view: false` (dev profile)
+
+**Problem:** OSIV keeps the Hibernate session open through JSON serialization, masking lazy-load bugs (N+1, `LazyInitializationException` deferred to production).
+
+**Choice:** Disabled in `application-dev.yml`. Services/repos must **fetch what DTOs need** inside `@Transactional` methods (`findByIdWithItems`, `findByIdWithCart`, etc.).
+
+**Evidence:** `OrderRepositoryTest` compares SQL counts for fetch-join vs naive load; manual smoke on `GET /orders` and `GET /orders/{id}` with populated `items`.
+
+### Thin controllers + `CustomerLookupService`
+
+**Problem:** Several controllers resolved `customerId` via injected `CustomerRepository` — a layering leak (HTTP → persistence).
+
+**Choice:** `CustomerLookupService.requireCustomerId(email)` centralizes JWT principal → customer PK lookup. **ArchUnit** enforces that controllers and Jersey resources do not depend on `repository` packages.
+
+### Testcontainers for checkout integration
+
+**Problem:** H2 is fast for slice tests but is not Postgres — dialect, Flyway, and locking can differ.
+
+**Choice:** `CheckoutIntegrationTest` extends `AbstractPostgresIntegrationTest` (Postgres 15 Alpine, matches `docker-compose`). Repo tests stay on H2 for speed.
+
+### Mock payment + optional Stripe
+
+**Default:** `app.payment-gateway.provider=mock` for local and most tests. **Stripe** path is conditional (`@ConditionalOnProperty`) with webhook idempotency via `processed_webhook_events`. Keeps `mvn verify` and Docker-less dev workable without API keys.
+
+### If traffic were 10×
+
+| Area | Likely next step |
+|------|------------------|
+| Read load | Redis for product/catalog cache; read replicas for order history |
+| Checkout | Shorter TX — authorize sync, capture async; or explicit saga |
+| Outbox | `FOR UPDATE SKIP LOCKED`, dedicated poller workers, await Kafka ack before `SENT`, dead-letter after N retries; or CDC (Debezium) |
+| Inventory | Pessimistic lock or reservation TTL for hot SKUs; load test `@Version` + retry under contention |
+| Kafka | Idempotent consumers, partition key = order number |
+| Ops | Separate readiness for Kafka/Stripe; trace checkout span across inventory → payment → outbox |
 
 ---
 

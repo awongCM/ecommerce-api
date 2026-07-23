@@ -3,7 +3,7 @@ package com.example.ecommerce.controller;
 import com.example.ecommerce.domain.enums.OrderStatus;
 import com.example.ecommerce.dto.request.CheckoutRequest;
 import com.example.ecommerce.dto.response.OrderDTO;
-import com.example.ecommerce.repository.CustomerRepository;
+import com.example.ecommerce.service.CustomerLookupService;
 import com.example.ecommerce.service.OrderService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
@@ -18,12 +18,12 @@ import org.springframework.web.bind.annotation.*;
 public class OrderController {
 
     private final OrderService orderService;
-    private final CustomerRepository customerRepo;
+    private final CustomerLookupService customerLookup;
 
     public OrderController(OrderService orderService,
-                           CustomerRepository customerRepo) {
+                           CustomerLookupService customerLookup) {
         this.orderService = orderService;
-        this.customerRepo = customerRepo;
+        this.customerLookup = customerLookup;
     }
 
     // Checkout — create order from cart
@@ -31,7 +31,7 @@ public class OrderController {
     public ResponseEntity<OrderDTO> checkout(
             @AuthenticationPrincipal UserDetails user,
             @Valid @RequestBody CheckoutRequest request) {
-        Long customerId = resolveCustomerId(user.getUsername());
+        Long customerId = customerLookup.requireCustomerId(user.getUsername());
         OrderDTO order = orderService.checkout(customerId, request);
         return ResponseEntity.status(201).body(order);
     }
@@ -42,7 +42,7 @@ public class OrderController {
             @AuthenticationPrincipal UserDetails user,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Long customerId = resolveCustomerId(user.getUsername());
+        Long customerId = customerLookup.requireCustomerId(user.getUsername());
         return ResponseEntity.ok(
             orderService.getCustomerOrders(customerId, page, size));
     }
@@ -52,7 +52,7 @@ public class OrderController {
     public ResponseEntity<OrderDTO> getOrder(
             @AuthenticationPrincipal UserDetails user,
             @PathVariable Long id) {
-        Long customerId = resolveCustomerId(user.getUsername());
+        Long customerId = customerLookup.requireCustomerId(user.getUsername());
         return ResponseEntity.ok(orderService.getOrder(id, customerId));
     }
 
@@ -63,13 +63,5 @@ public class OrderController {
             @PathVariable Long id,
             @RequestParam OrderStatus status) {
         return ResponseEntity.ok(orderService.updateStatus(id, status));
-    }
-
-    private Long resolveCustomerId(String email) {
-        return customerRepo.findByEmail(email)
-            .orElseThrow(() ->
-                new com.example.ecommerce.exception
-                    .ResourceNotFoundException("Customer: " + email))
-            .getId();
     }
 }

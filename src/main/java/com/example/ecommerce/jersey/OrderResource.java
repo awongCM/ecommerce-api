@@ -2,7 +2,7 @@ package com.example.ecommerce.jersey;
 
 import com.example.ecommerce.dto.request.CheckoutRequest;
 import com.example.ecommerce.dto.response.OrderDTO;
-import com.example.ecommerce.repository.CustomerRepository;
+import com.example.ecommerce.service.CustomerLookupService;
 import com.example.ecommerce.service.OrderService;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.*;
@@ -17,12 +17,12 @@ import org.springframework.stereotype.Component;
 public class OrderResource {
 
     private final OrderService orderService;
-    private final CustomerRepository customerRepo;
+    private final CustomerLookupService customerLookup;
 
     public OrderResource(OrderService orderService,
-                         CustomerRepository customerRepo) {
+                         CustomerLookupService customerLookup) {
         this.orderService = orderService;
-        this.customerRepo = customerRepo;
+        this.customerLookup = customerLookup;
     }
 
     @POST
@@ -33,7 +33,7 @@ public class OrderResource {
             @Context UriInfo uriInfo) {
 
         String email = securityContext.getUserPrincipal().getName();
-        Long customerId = resolveCustomerId(email);
+        Long customerId = customerLookup.requireCustomerId(email);
 
         OrderDTO order = orderService.checkout(customerId, request);
         URI location = uriInfo.getAbsolutePathBuilder()
@@ -49,14 +49,7 @@ public class OrderResource {
             @Context SecurityContext securityContext) {
 
         String email = securityContext.getUserPrincipal().getName();
-        Long customerId = resolveCustomerId(email);
+        Long customerId = customerLookup.requireCustomerId(email);
         return Response.ok(orderService.getOrder(id, customerId)).build();
-    }
-
-    private Long resolveCustomerId(String email) {
-        return customerRepo.findByEmail(email)
-            .orElseThrow(() ->
-                new NotFoundException("Customer not found: " + email))
-            .getId();
     }
 }
