@@ -128,8 +128,9 @@ Security, persistence, and business logic are shared; only the web layer differs
 | Repository | `@DataJpaTest` (H2) | Queries and mappings; use `flush`/`clear` when asserting DB-visible state vs first-level cache |
 | Integration | `@SpringBootTest` + **Testcontainers** (Postgres 15) | Critical paths (e.g. checkout) on the same DB engine as prod; see `AbstractPostgresIntegrationTest` |
 | Architecture | **ArchUnit** (`ArchitectureTest`) | Layering guardrails — web adapters must not touch repositories; no field `@Autowired` |
+| Concurrency | `@SpringBootTest` + multi-thread | Last-unit stock: `@Version` + `@Retryable` prevents oversell (`InventoryServiceConcurrencyTest`) |
 
-**Heuristic:** Unit tests prove **rules**; slice tests prove **adapters** (web, JPA); integration tests prove **end-to-end** behavior on real Postgres; ArchUnit catches **layering drift** in CI.
+**Heuristic:** Unit tests prove **rules**; slice tests prove **adapters** (web, JPA); integration tests prove **end-to-end** behavior on real Postgres; ArchUnit catches **layering drift**; concurrency tests prove **inventory safety** under parallel reservation.
 
 **Local note:** `CheckoutIntegrationTest` requires Docker (Testcontainers). On Colima, set `DOCKER_HOST` to the Colima socket; if Ryuk fails to start, `TESTCONTAINERS_RYUK_DISABLED=true` may be needed. Without Docker, the test is skipped (`disabledWithoutDocker = true`) and `mvn verify` still passes.
 
