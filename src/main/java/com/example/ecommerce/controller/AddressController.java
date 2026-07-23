@@ -2,9 +2,8 @@ package com.example.ecommerce.controller;
 
 import com.example.ecommerce.dto.request.AddressRequest;
 import com.example.ecommerce.dto.response.AddressDTO;
-import com.example.ecommerce.exception.ResourceNotFoundException;
-import com.example.ecommerce.repository.CustomerRepository;
 import com.example.ecommerce.service.AddressService;
+import com.example.ecommerce.service.CustomerLookupService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -18,18 +17,19 @@ import java.util.List;
 public class AddressController {
 
     private final AddressService addressService;
-    private final CustomerRepository customerRepository;
+    private final CustomerLookupService customerLookup;
 
     public AddressController(AddressService addressService,
-                             CustomerRepository customerRepository) {
-        this.addressService     = addressService;
-        this.customerRepository = customerRepository;
+                             CustomerLookupService customerLookup) {
+        this.addressService = addressService;
+        this.customerLookup = customerLookup;
     }
 
     @GetMapping
     public ResponseEntity<List<AddressDTO>> listAddresses(
             @AuthenticationPrincipal UserDetails user) {
-        return ResponseEntity.ok(addressService.listAddresses(resolveId(user)));
+        return ResponseEntity.ok(
+            addressService.listAddresses(customerLookup.requireCustomerId(user.getUsername())));
     }
 
     @PostMapping
@@ -37,7 +37,8 @@ public class AddressController {
             @AuthenticationPrincipal UserDetails user,
             @Valid @RequestBody AddressRequest request) {
         return ResponseEntity.status(201)
-            .body(addressService.createAddress(resolveId(user), request));
+            .body(addressService.createAddress(
+                customerLookup.requireCustomerId(user.getUsername()), request));
     }
 
     @PutMapping("/{id}")
@@ -45,28 +46,24 @@ public class AddressController {
             @AuthenticationPrincipal UserDetails user,
             @PathVariable Long id,
             @Valid @RequestBody AddressRequest request) {
-        return ResponseEntity.ok(addressService.updateAddress(resolveId(user), id, request));
+        return ResponseEntity.ok(addressService.updateAddress(
+            customerLookup.requireCustomerId(user.getUsername()), id, request));
     }
 
     @PatchMapping("/{id}/default")
     public ResponseEntity<AddressDTO> setDefault(
             @AuthenticationPrincipal UserDetails user,
             @PathVariable Long id) {
-        return ResponseEntity.ok(addressService.setDefault(resolveId(user), id));
+        return ResponseEntity.ok(addressService.setDefault(
+            customerLookup.requireCustomerId(user.getUsername()), id));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteAddress(
             @AuthenticationPrincipal UserDetails user,
             @PathVariable Long id) {
-        addressService.deleteAddress(resolveId(user), id);
+        addressService.deleteAddress(
+            customerLookup.requireCustomerId(user.getUsername()), id);
         return ResponseEntity.noContent().build();
-    }
-
-    private Long resolveId(UserDetails user) {
-        return customerRepository.findByEmail(user.getUsername())
-            .orElseThrow(() -> new ResourceNotFoundException(
-                "Customer email: " + user.getUsername()))
-            .getId();
     }
 }
