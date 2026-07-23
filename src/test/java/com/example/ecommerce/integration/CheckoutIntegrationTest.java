@@ -1,27 +1,45 @@
 package com.example.ecommerce.integration;
 
-import com.example.ecommerce.dto.request.*;
-import com.example.ecommerce.dto.response.*;
-import com.example.ecommerce.domain.*;
+import com.example.ecommerce.domain.Address;
+import com.example.ecommerce.domain.Category;
+import com.example.ecommerce.domain.Customer;
+import com.example.ecommerce.domain.OutboxEvent;
+import com.example.ecommerce.domain.Product;
+import com.example.ecommerce.domain.enums.OutboxStatus;
+import com.example.ecommerce.dto.request.AddToCartRequest;
+import com.example.ecommerce.dto.request.CheckoutRequest;
+import com.example.ecommerce.dto.request.RegisterRequest;
+import com.example.ecommerce.dto.response.AuthResponse;
+import com.example.ecommerce.dto.response.CartDTO;
+import com.example.ecommerce.dto.response.OrderDTO;
 import com.example.ecommerce.kafka.OutboxPoller;
 import com.example.ecommerce.kafka.OrderEventPublisher;
-import com.example.ecommerce.repository.*;
+import com.example.ecommerce.repository.AddressRepository;
+import com.example.ecommerce.repository.CategoryRepository;
+import com.example.ecommerce.repository.CustomerRepository;
+import com.example.ecommerce.repository.OutboxEventRepository;
+import com.example.ecommerce.repository.ProductRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.http.*;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.annotation.DirtiesContext;
+
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
-class CheckoutIntegrationTest {
+class CheckoutIntegrationTest extends AbstractPostgresIntegrationTest {
 
     @Autowired
     private TestRestTemplate restTemplate;
@@ -43,6 +61,9 @@ class CheckoutIntegrationTest {
 
     @Autowired
     private CategoryRepository categoryRepository;
+
+    @Autowired
+    private OutboxEventRepository outboxEventRepository;
 
     private Long seededProductId;
 
@@ -114,6 +135,11 @@ class CheckoutIntegrationTest {
         OrderDTO order = orderResponse.getBody();
         assertThat(order.getOrderNumber()).startsWith("ORD-");
 
+        List<OutboxEvent> outboxRows = outboxEventRepository.findAll();
+        assertThat(outboxRows).hasSize(1);
+        assertThat(outboxRows.get(0).getStatus()).isEqualTo(OutboxStatus.PENDING);
+        assertThat(outboxRows.get(0).getMessageKey()).isEqualTo(order.getOrderNumber());
+
         // 6. Verify idempotency — submit same request again
         ResponseEntity<OrderDTO> dupResponse = restTemplate.exchange(
             "/api/v1/orders/checkout",
@@ -123,5 +149,7 @@ class CheckoutIntegrationTest {
         assertThat(dupResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(dupResponse.getBody().getOrderNumber())
             .isEqualTo(order.getOrderNumber()); // same order, not a duplicate
+
+        assertThat(outboxEventRepository.findAll()).hasSize(1);
     }
 }
