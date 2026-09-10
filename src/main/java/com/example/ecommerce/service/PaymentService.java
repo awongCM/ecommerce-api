@@ -69,7 +69,7 @@ public class PaymentService {
         }
     }
 
-    // Fallback: circuit open or retries exhausted — does NOT return, throws
+    // Fallback: circuit open or retries exhausted — returns GatewayUnavailable for OrderService to handle
     public PaymentOutcome paymentFallback(Order order, String token, Throwable t) {
         log.error("Payment gateway unavailable for order: {}. Cause: {}",
             order.getOrderNumber(), t.getMessage());
