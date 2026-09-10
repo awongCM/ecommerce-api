@@ -59,6 +59,7 @@ USER appuser
 EXPOSE 8080
 
 ENTRYPOINT ["java", \
+  "--enable-preview", \
   "-XX:+UseContainerSupport", \
   "-XX:MaxRAMPercentage=75.0", \
   "-XX:+UseZGC", \

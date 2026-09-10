@@ -256,7 +256,7 @@ docker build --target native-runtime -t ecommerce-api:native .
 
 ### Capstone evidence
 
-Recorded on **Apple Silicon (arm64), macOS 14.6.1**, **2026-09-10**. Load and container metrics use `scripts/checkout-load.sh` and `docker stats` as described in the task brief.
+Recorded on **Apple Silicon (arm64), macOS 14.6.1**, **2026-09-10**. Load and container metrics to be captured with `scripts/checkout-load.sh` and `docker stats` as described in the task brief.
 
 | Metric | JVM (ZGC, Java 25) | Native (GraalVM 25) |
 |--------|-------------------|---------------------|
