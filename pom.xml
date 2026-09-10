@@ -231,6 +231,10 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <jvmArguments>--enable-preview</jvmArguments>
+                    <compilerArguments>--enable-preview</compilerArguments>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.graalvm.buildtools</groupId>
@@ -240,7 +244,11 @@
                     <metadataRepository>
                         <enabled>true</enabled>
                     </metadataRepository>
+                    <jvmArgs>
+                        <jvmArg>--enable-preview</jvmArg>
+                    </jvmArgs>
                     <buildArgs>
+                        <buildArg>--enable-preview</buildArg>
                         <buildArg>--initialize-at-build-time=org.slf4j</buildArg>
                     </buildArgs>
                 </configuration>

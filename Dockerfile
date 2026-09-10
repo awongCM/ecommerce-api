@@ -11,7 +11,32 @@ RUN mvn dependency:go-offline -q
 COPY src src
 RUN mvn package -DskipTests -q
 
+# ---- Optional: GraalVM native binary (build with --target native-runtime) ----
+# Uses Maven -Pnative (Spring Boot AOT + native-maven-plugin), not raw native-image -jar.
+# Unvalidated locally — requires GraalVM 25 and a long compile inside Docker.
+FROM ghcr.io/graalvm/native-image-community:25 AS native-build
+
+WORKDIR /app
+
+RUN microdnf install -y maven && microdnf clean all
+
+COPY pom.xml .
+RUN mvn dependency:go-offline -q || true
+COPY src src
+RUN mvn -Pnative package -DskipTests -q
+
+FROM debian:bookworm-slim AS native-runtime
+
+WORKDIR /app
+
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+COPY --from=native-build /app/target/ecommerce-api ./ecommerce-api-native
+USER appuser
+EXPOSE 8080
+ENTRYPOINT ["/app/ecommerce-api-native"]
+
 # Stage 2: Runtime — smaller image (JRE only, not JDK)
+# Last stage = default target for `docker build .`
 FROM eclipse-temurin:25-jre AS runtime
 
 WORKDIR /app
@@ -39,21 +64,3 @@ ENTRYPOINT ["java", \
   "-XX:+UseZGC", \
   "-Djava.security.egd=file:/dev/./urandom", \
   "-jar", "/app/app.jar"]
-
-# ---- Optional: GraalVM native binary (build with --target native-runtime) ----
-FROM ghcr.io/graalvm/native-image-community:25 AS native-build
-WORKDIR /app
-COPY --from=build /app/target/ecommerce-api-*.jar app.jar
-# AOT-process the jar and compile to native
-RUN native-image -jar app.jar \
-    --no-fallback \
-    -H:Name=ecommerce-api-native \
-    -H:+ReportExceptionStackTraces
-
-FROM debian:bookworm-slim AS native-runtime
-WORKDIR /app
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
-COPY --from=native-build /app/ecommerce-api-native .
-USER appuser
-EXPOSE 8080
-ENTRYPOINT ["/app/ecommerce-api-native"]
