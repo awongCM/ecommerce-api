@@ -39,3 +39,21 @@ ENTRYPOINT ["java", \
   "-XX:+UseZGC", \
   "-Djava.security.egd=file:/dev/./urandom", \
   "-jar", "/app/app.jar"]
+
+# ---- Optional: GraalVM native binary (build with --target native-runtime) ----
+FROM ghcr.io/graalvm/native-image-community:25 AS native-build
+WORKDIR /app
+COPY --from=build /app/target/ecommerce-api-*.jar app.jar
+# AOT-process the jar and compile to native
+RUN native-image -jar app.jar \
+    --no-fallback \
+    -H:Name=ecommerce-api-native \
+    -H:+ReportExceptionStackTraces
+
+FROM debian:bookworm-slim AS native-runtime
+WORKDIR /app
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+COPY --from=native-build /app/ecommerce-api-native .
+USER appuser
+EXPOSE 8080
+ENTRYPOINT ["/app/ecommerce-api-native"]

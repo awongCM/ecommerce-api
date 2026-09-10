@@ -233,6 +233,27 @@ What to look for:
 - **GC pause distribution** — should be microseconds under ZGC, not milliseconds.
 - **Hot allocation paths** — a flame graph of `jdk.ObjectAllocationInNewTLAB` identifies which service methods create the most short-lived objects.
 
+### GraalVM native image
+
+The `native` Maven profile (`mvn -Pnative native:compile`) produces a standalone binary with no JVM required.
+
+**What works:** Spring MVC controllers, Flyway, Spring Data JPA (H2 in the dev profile for unit tests), Resilience4j, JWT.
+
+**Known limitations:**
+- **Jersey** — JAX-RS runtime uses reflection heavily. If the native compiler cannot resolve Jersey's reachability metadata, Jersey is excluded from the native artifact. The JVM image remains the production default; native is a second artifact.
+- **Kafka** — Kafka client requires network access at startup; test with a live broker, not H2 mode.
+- **Testcontainers** — cannot be used inside a native image test; integration tests run on the JVM image.
+
+**Why bother with native?** Startup: JVM image is ~8s; native is typically under 500ms. Memory at idle: JVM ~350 MB RSS; native ~80 MB. Those numbers matter for scale-to-zero (Kubernetes HPA, serverless).
+
+Build the optional Docker native image explicitly (JVM `runtime` stage remains the default):
+
+```bash
+docker build --target native-runtime -t ecommerce-api:native .
+```
+
+**Local build status (Task 5):** `mvn -Pnative native:compile` was attempted with JDK 25 but did not produce a binary. Spring Boot AOT (`process-aot`) failed because compiled classes use JDK preview features and the AOT JVM did not run with `--enable-preview`. GraalVM `native-image` is also not on the default PATH on the dev host. The Maven profile, plugin, and Dockerfile native stage are in place; a full native build requires GraalVM 25 and likely passing `--enable-preview` into AOT/native JVM args. Jersey reachability was not exercised — treat `/jersey/*` as JVM-only until a native image builds cleanly.
+
 ---
 
 ## Related diagrams
