@@ -5,13 +5,16 @@ import com.example.ecommerce.domain.enums.OrderStatus;
 import com.example.ecommerce.dto.request.CheckoutRequest;
 import com.example.ecommerce.dto.response.OrderDTO;
 import com.example.ecommerce.exception.ResourceNotFoundException;
+import com.example.ecommerce.payment.PaymentOutcome;
 import com.example.ecommerce.repository.*;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.Objects;
 
+@Slf4j
 @Service
 public class OrderService {
 
@@ -98,18 +101,29 @@ public class OrderService {
         order = orderRepository.save(order);
 
         // 5. Process payment (circuit breaker lives inside PaymentService)
-        try {
-            paymentService.processPayment(order, request.getPaymentToken());
-            order.transitionTo(OrderStatus.CONFIRMED);
-        } catch (Exception e) {
-            // Release inventory if payment fails
-            for (CartItem item : cart.getItems()) {
-                inventoryService.releaseStock(
-                    item.getProduct().getId(), item.getQuantity());
+        PaymentOutcome outcome = paymentService.processPayment(order, request.getPaymentToken());
+
+        switch (outcome) {
+            case PaymentOutcome.Captured c -> {
+                order.transitionTo(OrderStatus.CONFIRMED);
+                log.info("Checkout captured, ref={}", c.gatewayReference());
             }
-            order.transitionTo(OrderStatus.CANCELLED);
-            orderRepository.save(order);
-            throw new IllegalStateException("Payment failed: " + e.getMessage());
+            case PaymentOutcome.GatewayUnavailable u -> {
+                for (CartItem item : cart.getItems()) {
+                    inventoryService.releaseStock(item.getProduct().getId(), item.getQuantity());
+                }
+                order.transitionTo(OrderStatus.CANCELLED);
+                orderRepository.save(order);
+                throw new IllegalStateException("Payment gateway unavailable: " + u.reason());
+            }
+            case PaymentOutcome.Failed f -> {
+                for (CartItem item : cart.getItems()) {
+                    inventoryService.releaseStock(item.getProduct().getId(), item.getQuantity());
+                }
+                order.transitionTo(OrderStatus.CANCELLED);
+                orderRepository.save(order);
+                throw new IllegalStateException("Payment failed: " + f.reason());
+            }
         }
 
         // 6. Clear the cart

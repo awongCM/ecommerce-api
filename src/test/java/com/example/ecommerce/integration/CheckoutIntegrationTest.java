@@ -90,7 +90,7 @@ class CheckoutIntegrationTest extends AbstractPostgresIntegrationTest {
         assertThat(registerResponse.getStatusCode())
             .isEqualTo(HttpStatus.CREATED);
 
-        String token = registerResponse.getBody().getToken();
+        String token = registerResponse.getBody().token();
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);

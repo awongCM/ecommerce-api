@@ -5,6 +5,7 @@ import com.example.ecommerce.domain.enums.OrderStatus;
 import com.example.ecommerce.dto.request.CheckoutRequest;
 import com.example.ecommerce.dto.response.OrderDTO;
 import com.example.ecommerce.exception.ResourceNotFoundException;
+import com.example.ecommerce.payment.PaymentOutcome;
 import com.example.ecommerce.repository.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -77,6 +78,8 @@ class OrderServiceTest {
         when(savedOrder.getOrderNumber()).thenReturn("ORD-ABC123");
         when(savedOrder.getItems()).thenReturn(java.util.List.of());
         when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(paymentService.processPayment(any(), eq("tok_valid")))
+            .thenReturn(new PaymentOutcome.Captured("pi_test", "4242"));
 
         // Act
         OrderDTO result = orderService.checkout(1L, request);
@@ -175,9 +178,8 @@ class OrderServiceTest {
         when(orderRepository.save(any(Order.class)))
             .thenAnswer(invocation -> invocation.getArgument(0));
 
-        doThrow(new RuntimeException("card declined"))
-            .when(paymentService)
-            .processPayment(any(Order.class), eq("tok_declined"));
+        when(paymentService.processPayment(any(Order.class), eq("tok_declined")))
+            .thenReturn(new PaymentOutcome.Failed("card declined"));
 
         // Act & Assert - checkout fails to the client
         assertThatThrownBy(() -> orderService.checkout(1L, request))

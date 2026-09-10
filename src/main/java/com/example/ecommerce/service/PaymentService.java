@@ -5,6 +5,7 @@ import com.example.ecommerce.domain.Order;
 import com.example.ecommerce.domain.Payment;
 import com.example.ecommerce.payment.PaymentCaptureResult;
 import com.example.ecommerce.payment.PaymentGatewayClient;
+import com.example.ecommerce.payment.PaymentOutcome;
 import com.example.ecommerce.repository.PaymentRepository;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
@@ -39,7 +40,7 @@ public class PaymentService {
     @Transactional
     @CircuitBreaker(name = "paymentGateway", fallbackMethod = "paymentFallback")
     @Retry(name = "paymentGateway")
-    public void processPayment(Order order, String paymentToken) {
+    public PaymentOutcome processPayment(Order order, String paymentToken) {
         Payment payment = new Payment(
             order, order.getTotalAmount(), order.getIdempotencyKey());
         payment = paymentRepository.save(payment);
@@ -58,18 +59,21 @@ public class PaymentService {
             log.info("Payment captured for order: {}, ref: {}",
                 order.getOrderNumber(), result.gatewayReference());
 
+            return new PaymentOutcome.Captured(
+                result.gatewayReference(), result.cardLast4());
+
         } catch (Exception e) {
             payment.markFailed();
             paymentRepository.save(payment);
-            throw e;
+            throw e;   // Resilience4j / caller handles it
         }
     }
 
-    // Called when circuit is OPEN or all retries exhausted
-    public void paymentFallback(Order order, String token, Throwable t) {
+    // Fallback: circuit open or retries exhausted — does NOT return, throws
+    public PaymentOutcome paymentFallback(Order order, String token, Throwable t) {
         log.error("Payment gateway unavailable for order: {}. Cause: {}",
             order.getOrderNumber(), t.getMessage());
-        throw new RuntimeException(
-            "Payment gateway temporarily unavailable. Please try again later.");
+        // Return the unavailable outcome; OrderService turns it into IllegalStateException
+        return new PaymentOutcome.GatewayUnavailable(t.getMessage());
     }
 }
