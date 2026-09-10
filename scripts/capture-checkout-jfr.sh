@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Captures a JFR recording of one checkout cycle against a running local app.
-# Usage: ./scripts/capture-checkout-jfr.sh
-# Requires: jcmd on PATH, app running on localhost:8080 with docker-compose.
+# Usage: ./scripts/capture-checkout-jfr.sh  (run from repo root)
+# Requires: jcmd/jps on PATH (JDK tools — not in eclipse-temurin:25-jre).
+# Targets a host-run JDK process (mvn spring-boot:run / local JDK), not the Docker JRE image.
+# filename=target/... is relative to the JVM process cwd — run from repo root so output lands in target/.
 
 set -euo pipefail
 

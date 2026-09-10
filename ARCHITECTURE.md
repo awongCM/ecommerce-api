@@ -226,6 +226,8 @@ The production `Dockerfile` uses `-XX:+UseZGC`. On JDK 25, generational ZGC is t
 
 `scripts/capture-checkout-jfr.sh` captures a 60-second `profile`-settings flight recording against a running app instance. Open the resulting `.jfr` file in JDK Mission Control (`jmc`).
 
+**Host JDK only:** The script targets a **host-run JDK process** (e.g. `mvn spring-boot:run` or a local JDK install), not the Docker JRE image. `jcmd` and `jps` are not available in `eclipse-temurin:25-jre`.
+
 What to look for:
 - **Virtual thread pinning** — if `synchronized` blocks inside library code pin a carrier thread, it shows as a `jdk.VirtualThreadPinned` event. As of JDK 24+, most Hibernate/JDBC synchronized blocks are unpinned.
 - **GC pause distribution** — should be microseconds under ZGC, not milliseconds.
