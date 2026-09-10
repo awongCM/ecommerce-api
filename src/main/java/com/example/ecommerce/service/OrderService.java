@@ -13,6 +13,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.Objects;
+import java.util.concurrent.StructuredTaskScope;
 
 @Slf4j
 @Service
@@ -132,14 +133,35 @@ public class OrderService {
 
         Order savedOrder = orderRepository.save(order);
 
-        // 7. Outbox row commits with the order; OutboxPoller publishes to Kafka
+        // 7. Outbox stays in the checkout transaction (transactional outbox pattern).
         outboxService.enqueueOrderCreated(savedOrder);
 
-        // 8. Async audit log — does not block the response
-        auditService.log("Order", savedOrder.getId().toString(),
-            "CREATED", null, savedOrder.getOrderNumber());
+        // 8. Independent post-commit I/O on virtual threads; failures are logged only.
+        postCheckoutTasks(savedOrder, customerId);
 
         return OrderDTO.from(savedOrder);
+    }
+
+    /**
+     * Runs post-commit tasks in parallel using virtual threads via StructuredTaskScope.
+     * Outbox enqueue stays in {@link #processNewCheckout} so it commits with the order;
+     * only independent, non-transactional work belongs here.
+     */
+    private void postCheckoutTasks(Order savedOrder, Long customerId) {
+        try (var scope = StructuredTaskScope.open(
+                StructuredTaskScope.Joiner.awaitAllSuccessfulOrThrow(),
+                cfg -> cfg.withThreadFactory(Thread.ofVirtual().factory()))) {
+            scope.fork(() -> auditService.logSync(
+                "Order", savedOrder.getId().toString(),
+                "CHECKOUT", null, savedOrder.getOrderNumber()));
+            scope.fork(() -> log.info(
+                "Checkout notification for order {} (customer {})",
+                savedOrder.getOrderNumber(), customerId));
+            scope.join();
+        } catch (Exception e) {
+            log.warn("Post-checkout tasks partially failed for order {}: {}",
+                savedOrder.getOrderNumber(), e.getMessage());
+        }
     }
 
     @Transactional(readOnly = true)

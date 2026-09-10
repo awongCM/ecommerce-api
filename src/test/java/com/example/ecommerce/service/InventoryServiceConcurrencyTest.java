@@ -17,6 +17,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -60,26 +62,28 @@ class InventoryServiceConcurrencyTest {
         AtomicInteger insufficient = new AtomicInteger();
         List<Throwable> unexpected = new ArrayList<>();
 
-        for (int i = 0; i < threadCount; i++) {
-            new Thread(() -> {
-                try {
-                    startGate.await();
-                    inventoryService.reserveStock(productId, 1);
-                    successes.incrementAndGet();
-                } catch (InsufficientStockException e) {
-                    insufficient.incrementAndGet();
-                } catch (Throwable t) {
-                    synchronized (unexpected) {
-                        unexpected.add(t);
+        try (ExecutorService vt = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int i = 0; i < threadCount; i++) {
+                vt.submit(() -> {
+                    try {
+                        startGate.await();
+                        inventoryService.reserveStock(productId, 1);
+                        successes.incrementAndGet();
+                    } catch (InsufficientStockException e) {
+                        insufficient.incrementAndGet();
+                    } catch (Throwable t) {
+                        synchronized (unexpected) {
+                            unexpected.add(t);
+                        }
+                    } finally {
+                        done.countDown();
                     }
-                } finally {
-                    done.countDown();
-                }
-            }).start();
+                    return null;
+                });
+            }
+            startGate.countDown();
+            assertThat(done.await(15, TimeUnit.SECONDS)).isTrue();
         }
-
-        startGate.countDown();
-        assertThat(done.await(15, TimeUnit.SECONDS)).isTrue();
         assertThat(unexpected).isEmpty();
         assertThat(successes.get()).isEqualTo(1);
         assertThat(insufficient.get()).isEqualTo(1);
@@ -102,24 +106,26 @@ class InventoryServiceConcurrencyTest {
         AtomicInteger successes = new AtomicInteger();
         List<Throwable> failures = new ArrayList<>();
 
-        for (int i = 0; i < threadCount; i++) {
-            new Thread(() -> {
-                try {
-                    startGate.await();
-                    inventoryService.reserveStock(productId, 1);
-                    successes.incrementAndGet();
-                } catch (Throwable t) {
-                    synchronized (failures) {
-                        failures.add(t);
+        try (ExecutorService vt = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int i = 0; i < threadCount; i++) {
+                vt.submit(() -> {
+                    try {
+                        startGate.await();
+                        inventoryService.reserveStock(productId, 1);
+                        successes.incrementAndGet();
+                    } catch (Throwable t) {
+                        synchronized (failures) {
+                            failures.add(t);
+                        }
+                    } finally {
+                        done.countDown();
                     }
-                } finally {
-                    done.countDown();
-                }
-            }).start();
+                    return null;
+                });
+            }
+            startGate.countDown();
+            assertThat(done.await(15, TimeUnit.SECONDS)).isTrue();
         }
-
-        startGate.countDown();
-        assertThat(done.await(15, TimeUnit.SECONDS)).isTrue();
         assertThat(failures).isEmpty();
         assertThat(successes.get()).isEqualTo(2);
 

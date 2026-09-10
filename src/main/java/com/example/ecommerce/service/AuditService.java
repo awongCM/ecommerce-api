@@ -21,6 +21,12 @@ public class AuditService {
     @Async
     public void log(String entityType, String entityId,
                     String action, String oldValue, String newValue) {
+        logSync(entityType, entityId, action, oldValue, newValue);
+    }
+
+    /** Synchronous audit write for StructuredTaskScope fan-out (join waits for completion). */
+    public void logSync(String entityType, String entityId,
+                        String action, String oldValue, String newValue) {
         String actor = getCurrentUser();
         AuditLog entry = new AuditLog(entityType, entityId,
             action, actor, oldValue, newValue);
