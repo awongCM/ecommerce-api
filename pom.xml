@@ -8,7 +8,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.0</version>
+        <version>3.5.16</version>
     </parent>
 
     <groupId>com.example</groupId>
@@ -18,11 +18,8 @@
     <description>Full-stack ecommerce REST API — Java portfolio project</description>
 
     <properties>
-        <java.version>17</java.version>
-        <resilience4j.version>2.1.0</resilience4j.version>
-        <!-- Byte Buddy 1.14.x (bundled with Spring Boot 3.2) only supports up to Java 22.
-             Override to 1.15.x which officially supports Java 23+ including Java 25. -->
-        <byte-buddy.version>1.15.11</byte-buddy.version>
+        <java.version>25</java.version>
+        <resilience4j.version>2.2.0</resilience4j.version>
     </properties>
 
     <dependencies>

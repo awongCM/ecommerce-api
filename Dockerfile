@@ -1,5 +1,5 @@
 # Stage 1: Build — uses Maven image (no mvnw wrapper needed)
-FROM maven:3.9-eclipse-temurin-17 AS build
+FROM maven:3.9-eclipse-temurin-25 AS build
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ COPY src src
 RUN mvn package -DskipTests -q
 
 # Stage 2: Runtime — smaller image (JRE only, not JDK)
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:25-jre AS runtime
 
 WORKDIR /app
 
