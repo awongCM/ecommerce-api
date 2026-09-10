@@ -212,6 +212,27 @@ Keep changes scoped to the slice; avoid cross-feature repository calls from unre
 
 ---
 
+## JVM configuration
+
+### Garbage collector — Generational ZGC
+
+The production `Dockerfile` uses `-XX:+UseZGC`. On JDK 25, generational ZGC is the default when ZGC is enabled; the separate `-XX:+ZGenerational` flag was removed in JDK 24.
+
+**Why:** ZGC is a fully concurrent, sub-millisecond pause collector. Generational ZGC adds a young/old generation split that reduces the amount of live data scanned per cycle, lowering CPU overhead on the long-lived order and payment objects without sacrificing pause targets.
+
+**Trade-off:** Slightly higher memory footprint than G1 (ZGC pre-allocates coloured pointers). Acceptable at the container sizes this app targets.
+
+### JFR profiling
+
+`scripts/capture-checkout-jfr.sh` captures a 60-second `profile`-settings flight recording against a running app instance. Open the resulting `.jfr` file in JDK Mission Control (`jmc`).
+
+What to look for:
+- **Virtual thread pinning** — if `synchronized` blocks inside library code pin a carrier thread, it shows as a `jdk.VirtualThreadPinned` event. As of JDK 24+, most Hibernate/JDBC synchronized blocks are unpinned.
+- **GC pause distribution** — should be microseconds under ZGC, not milliseconds.
+- **Hot allocation paths** — a flame graph of `jdk.ObjectAllocationInNewTLAB` identifies which service methods create the most short-lived objects.
+
+---
+
 ## Related diagrams
 
 The ASCII architecture diagram in [README.md](./README.md) illustrates components end-to-end. If it disagrees with this document on **transaction propagation for payments** or **outbox vs direct Kafka publish**, treat **this file** as authoritative.
