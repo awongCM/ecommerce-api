@@ -41,3 +41,6 @@ surefire-reports/
 # OS
 .DS_Store
 Thumbs.db
+
+# Isolated git worktrees
+.worktrees/
