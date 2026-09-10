@@ -248,7 +248,6 @@
                         <jvmArg>--enable-preview</jvmArg>
                     </jvmArgs>
                     <buildArgs>
-                        <buildArg>--enable-preview</buildArg>
                         <buildArg>--initialize-at-build-time=org.slf4j</buildArg>
                     </buildArgs>
                 </configuration>

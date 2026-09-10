@@ -237,7 +237,7 @@ What to look for:
 
 The `native` Maven profile (`mvn -Pnative native:compile`) produces a standalone binary with no JVM required.
 
-**What works:** Spring MVC controllers, Flyway, Spring Data JPA (H2 in the dev profile for unit tests), Resilience4j, JWT.
+**Intended scope (unverified until GraalVM native-image succeeds):** Spring MVC controllers, Flyway, Spring Data JPA (H2 in the dev profile for unit tests), Resilience4j, JWT.
 
 **Known limitations:**
 - **Jersey** — JAX-RS runtime uses reflection heavily. Native + Jersey compatibility is **unverified**; no native-profile dependency exclusion is implemented. The JVM image remains the production default; native is an optional second artifact.
@@ -252,7 +252,7 @@ Build the optional Docker native image explicitly (JVM `runtime` stage remains t
 docker build --target native-runtime -t ecommerce-api:native .
 ```
 
-**Local build status (Task 5):** `--enable-preview` is propagated into compiler, surefire, `spring-boot-maven-plugin` (`jvmArguments` + `compilerArguments` for AOT), and `native-maven-plugin` (`jvmArgs` + `buildArgs`). With Temurin JDK 25, `mvn -Pnative package -DskipTests` completes Spring Boot AOT but fails at `native-image` because GraalVM is not installed (`JAVA_HOME` is not a GraalVM distribution). Install GraalVM 25 and re-run to produce `target/ecommerce-api`. The Dockerfile `native-build` stage runs the same Maven `-Pnative` flow (unvalidated in Docker). Jersey reachability was not exercised — treat `/jersey/*` as JVM-only until a native image builds cleanly.
+**Local build status (Task 5):** `--enable-preview` is propagated into compiler, surefire, `spring-boot-maven-plugin` (`jvmArguments` + `compilerArguments` for AOT), and `native-maven-plugin` `jvmArgs` only (omitted from `buildArgs` — native-image may reject it). With Temurin JDK 25, `mvn -Pnative package -DskipTests` completes Spring Boot AOT but fails at `native-image` because GraalVM is not installed (`JAVA_HOME` is not a GraalVM distribution). Install GraalVM 25 and re-run to produce `target/ecommerce-api`. The Dockerfile `native-build` stage runs the same Maven `-Pnative` flow (unvalidated in Docker). Jersey reachability was not exercised — treat `/jersey/*` as JVM-only until a native image builds cleanly.
 
 ---
 
