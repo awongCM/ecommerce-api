@@ -10,7 +10,7 @@ Short onboarding for humans and AI assistants working in this repository.
 
 ## Stack (quick)
 
-- Java **17**, Spring Boot **3.2**, Maven.
+- Java **25** (Eclipse Temurin 25), Spring Boot **3.5**, Maven. Preview features require `--enable-preview` for `java -jar` (Dockerfile `ENTRYPOINT` includes it; `spring-boot-maven-plugin` sets it for `mvn spring-boot:run`).
 - Primary REST: Spring MVC under **`/api/v1`**.
 - Parallel JAX-RS: Jersey under **`/jersey`** (same domain logic; do not let the two stacks drift unintentionally).
 - JPA + **Flyway** (PostgreSQL in `docker` profile; H2 in `dev`), JWT security, Kafka (transactional outbox), Resilience4j, Actuator.

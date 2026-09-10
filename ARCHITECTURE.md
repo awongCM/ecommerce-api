@@ -264,7 +264,7 @@ Recorded on **Apple Silicon (arm64), macOS 14.6.1**, **2026-09-10**. Load and co
 | RSS at idle | not measured | n/a |
 | 20-concurrent checkout (virtual threads) | not measured | n/a |
 
-**Why not measured:** The `docker-compose` app container crash-loops on startup (`UnsupportedClassVersionError: Preview features are not enabled` — Dockerfile `ENTRYPOINT` omits `--enable-preview`). Host-run against the compose Postgres failed Flyway migration (`Unsupported Database: PostgreSQL 15.19` without `flyway-database-postgresql`). Native image was not built (GraalVM 25 / `native-image` not installed; see Task 5). Re-run after adding `--enable-preview` to the runtime `ENTRYPOINT`, fixing Flyway Postgres support for the docker profile, or installing GraalVM and building `--target native-runtime`.
+**Why not measured:** Capstone load and container metrics were not captured in this pass. Native image was not built (GraalVM 25 / `native-image` not installed; see Task 5). Re-run `scripts/checkout-load.sh` against a running JVM instance (Docker or host) to populate the table above; build with `--target native-runtime` once GraalVM 25 is available.
 
 **Script:** `scripts/checkout-load.sh` fires N concurrent `POST /api/v1/orders/checkout` requests (unique idempotency keys), collects HTTP status codes via temp files (no double-fire), and prints success/fail/elapsed ms. Requires a running app, valid JWT, cart item, and shipping address.
 

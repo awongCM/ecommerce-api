@@ -3,7 +3,8 @@
 A production-grade RESTful ecommerce API built with Spring Boot 3.x.
 
 ## Tech Stack
-- Java 17, Spring Boot 3.2
+- Java 25 (Eclipse Temurin 25), Spring Boot 3.5
+- Preview features enabled at compile/test time (`--enable-preview` in `pom.xml`); JVM `java -jar` launches need the same flag (included in the Dockerfile `ENTRYPOINT`)
 - Spring Security + JWT authentication
 - Spring Data JPA + PostgreSQL + Flyway
 - Apache Kafka (event-driven notifications)

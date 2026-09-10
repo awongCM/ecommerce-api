@@ -5,6 +5,7 @@ import com.example.ecommerce.domain.Order;
 import com.example.ecommerce.domain.Payment;
 import com.example.ecommerce.payment.PaymentCaptureResult;
 import com.example.ecommerce.payment.PaymentGatewayClient;
+import com.example.ecommerce.payment.PaymentGatewayException;
 import com.example.ecommerce.payment.PaymentOutcome;
 import com.example.ecommerce.repository.PaymentRepository;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
@@ -62,10 +63,14 @@ public class PaymentService {
             return new PaymentOutcome.Captured(
                 result.gatewayReference(), result.cardLast4());
 
+        } catch (PaymentGatewayException e) {
+            payment.markFailed();
+            paymentRepository.save(payment);
+            return new PaymentOutcome.Failed(e.getMessage());
         } catch (Exception e) {
             payment.markFailed();
             paymentRepository.save(payment);
-            throw e;   // Resilience4j / caller handles it
+            throw e;   // Resilience4j retry / fallback for I/O and outages
         }
     }
 
