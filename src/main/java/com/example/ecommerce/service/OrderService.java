@@ -12,6 +12,8 @@ import org.springframework.data.domain.*;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.util.Objects;
 import java.util.concurrent.StructuredTaskScope;
 
@@ -136,10 +138,22 @@ public class OrderService {
         // 7. Outbox stays in the checkout transaction (transactional outbox pattern).
         outboxService.enqueueOrderCreated(savedOrder);
 
-        // 8. Independent post-commit I/O on virtual threads; failures are logged only.
-        postCheckoutTasks(savedOrder, customerId);
+        // 8. Snapshot request-thread context, then fan out after commit on virtual threads.
+        AuditService.AuditContext auditContext = auditService.captureContext();
+        registerPostCheckoutAfterCommit(savedOrder, customerId, auditContext);
 
         return OrderDTO.from(savedOrder);
+    }
+
+    private void registerPostCheckoutAfterCommit(Order savedOrder, Long customerId,
+                                                 AuditService.AuditContext auditContext) {
+        TransactionSynchronizationManager.registerSynchronization(
+            new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    postCheckoutTasks(savedOrder, customerId, auditContext);
+                }
+            });
     }
 
     /**
@@ -147,13 +161,15 @@ public class OrderService {
      * Outbox enqueue stays in {@link #processNewCheckout} so it commits with the order;
      * only independent, non-transactional work belongs here.
      */
-    private void postCheckoutTasks(Order savedOrder, Long customerId) {
+    private void postCheckoutTasks(Order savedOrder, Long customerId,
+                                   AuditService.AuditContext auditContext) {
         try (var scope = StructuredTaskScope.open(
                 StructuredTaskScope.Joiner.awaitAllSuccessfulOrThrow(),
                 cfg -> cfg.withThreadFactory(Thread.ofVirtual().factory()))) {
             scope.fork(() -> auditService.logSync(
                 "Order", savedOrder.getId().toString(),
-                "CHECKOUT", null, savedOrder.getOrderNumber()));
+                "CHECKOUT", null, savedOrder.getOrderNumber(),
+                auditContext.actor(), auditContext.traceId()));
             scope.fork(() -> log.info(
                 "Checkout notification for order {} (customer {})",
                 savedOrder.getOrderNumber(), customerId));

@@ -14,11 +14,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.math.BigDecimal;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -42,6 +44,11 @@ class OrderServiceTest {
 
     @BeforeEach
     void setUp() {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.initSynchronization();
+        }
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+
         testCustomer = new Customer("John", "Doe",
             "john@example.com", "hashedPassword");
         testProduct = new Product("Laptop", "Gaming laptop",
@@ -57,6 +64,16 @@ class OrderServiceTest {
             "123 Main St", "Sydney", "NSW", "2000", "AU");
         testCustomer.getAddresses().add(testAddress);
         testCustomer.setCart(testCart);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDownTransactionSync() {
+        TransactionSynchronizationManager.clear();
+    }
+
+    private void triggerAfterCommit() {
+        TransactionSynchronizationManager.getSynchronizations()
+            .forEach(TransactionSynchronization::afterCommit);
     }
 
     @Test
@@ -80,15 +97,51 @@ class OrderServiceTest {
         when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
         when(paymentService.processPayment(any(), eq("tok_valid")))
             .thenReturn(new PaymentOutcome.Captured("pi_test", "4242"));
+        AuditService.AuditContext auditContext =
+            new AuditService.AuditContext("checkout-user", "trace-abc");
+        when(auditService.captureContext()).thenReturn(auditContext);
 
         // Act
         OrderDTO result = orderService.checkout(1L, request);
 
-        // Assert
+        // Assert — outbox in-TX; audit/notification only after commit
         assertThat(result.getOrderNumber()).isEqualTo("ORD-ABC123");
         verify(inventoryService).reserveStock(any(), eq(2));
         verify(paymentService).processPayment(any(), eq("tok_valid"));
         verify(outboxService).enqueueOrderCreated(any());
+        verify(auditService).captureContext();
+        verify(auditService, never()).logSync(anyString(), anyString(), anyString(),
+            any(), anyString(), anyString(), anyString());
+
+        triggerAfterCommit();
+
+        verify(auditService).logSync(eq("Order"), eq("1"), eq("CHECKOUT"),
+            isNull(), eq("ORD-ABC123"), eq("checkout-user"), eq("trace-abc"));
+    }
+
+    @Test
+    void checkout_shouldNotRunPostCommitTasks_whenPaymentFails() {
+        CheckoutRequest request = new CheckoutRequest();
+        request.setShippingAddressId(null);
+        request.setIdempotencyKey("rollback-key");
+        request.setPaymentToken("tok_declined");
+
+        when(orderRepository.findByIdempotencyKey("rollback-key"))
+            .thenReturn(Optional.empty());
+        when(customerRepository.findByIdWithCart(1L))
+            .thenReturn(Optional.of(testCustomer));
+        when(orderRepository.save(any(Order.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentService.processPayment(any(Order.class), eq("tok_declined")))
+            .thenReturn(new PaymentOutcome.Failed("card declined"));
+
+        assertThatThrownBy(() -> orderService.checkout(1L, request))
+            .isInstanceOf(IllegalStateException.class);
+
+        verify(auditService, never()).captureContext();
+        triggerAfterCommit();
+        verify(auditService, never()).logSync(anyString(), anyString(), anyString(),
+            any(), anyString(), anyString(), anyString());
     }
 
     @Test
@@ -199,6 +252,8 @@ class OrderServiceTest {
         // Happy-path side effects must not run
         verify(outboxService, never()).enqueueOrderCreated(any());
         verify(cartRepository, never()).save(any());
-        verify(auditService, never()).log(anyString(), anyString(), anyString(), anyString(), anyString());
+        verify(auditService, never()).captureContext();
+        verify(auditService, never()).logSync(anyString(), anyString(), anyString(),
+            any(), anyString(), anyString(), anyString());
     }
 }
