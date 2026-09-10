@@ -254,6 +254,20 @@ docker build --target native-runtime -t ecommerce-api:native .
 
 **Local build status (Task 5):** `--enable-preview` is propagated into compiler, surefire, `spring-boot-maven-plugin` (`jvmArguments` + `compilerArguments` for AOT), and `native-maven-plugin` `jvmArgs` only (omitted from `buildArgs` — native-image may reject it). With Temurin JDK 25, `mvn -Pnative package -DskipTests` completes Spring Boot AOT but fails at `native-image` because GraalVM is not installed (`JAVA_HOME` is not a GraalVM distribution). Install GraalVM 25 and re-run to produce `target/ecommerce-api`. The Dockerfile `native-build` stage runs the same Maven `-Pnative` flow (unvalidated in Docker). Jersey reachability was not exercised — treat `/jersey/*` as JVM-only until a native image builds cleanly.
 
+### Capstone evidence
+
+Recorded on **Apple Silicon (arm64), macOS 14.6.1**, **2026-09-10**. Load and container metrics use `scripts/checkout-load.sh` and `docker stats` as described in the task brief.
+
+| Metric | JVM (ZGC, Java 25) | Native (GraalVM 25) |
+|--------|-------------------|---------------------|
+| Startup to first health | not measured | n/a |
+| RSS at idle | not measured | n/a |
+| 20-concurrent checkout (virtual threads) | not measured | n/a |
+
+**Why not measured:** The `docker-compose` app container crash-loops on startup (`UnsupportedClassVersionError: Preview features are not enabled` — Dockerfile `ENTRYPOINT` omits `--enable-preview`). Host-run against the compose Postgres failed Flyway migration (`Unsupported Database: PostgreSQL 15.19` without `flyway-database-postgresql`). Native image was not built (GraalVM 25 / `native-image` not installed; see Task 5). Re-run after adding `--enable-preview` to the runtime `ENTRYPOINT`, fixing Flyway Postgres support for the docker profile, or installing GraalVM and building `--target native-runtime`.
+
+**Script:** `scripts/checkout-load.sh` fires N concurrent `POST /api/v1/orders/checkout` requests (unique idempotency keys), collects HTTP status codes via temp files (no double-fire), and prints success/fail/elapsed ms. Requires a running app, valid JWT, cart item, and shipping address.
+
 ---
 
 ## Related diagrams
