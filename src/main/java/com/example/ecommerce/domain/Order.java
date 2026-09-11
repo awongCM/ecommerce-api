@@ -87,7 +87,8 @@ public class Order {
             case PROCESSING  -> to == OrderStatus.SHIPPED;
             case SHIPPED     -> to == OrderStatus.DELIVERED;
             case DELIVERED   -> to == OrderStatus.REFUNDED;
-            default          -> false;
+            case CANCELLED   -> false;
+            case REFUNDED    -> false;
         };
         if (!valid) {
             throw new IllegalStateException(

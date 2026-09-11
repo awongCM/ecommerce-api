@@ -91,7 +91,8 @@ Security, persistence, and business logic are shared; only the web layer differs
 
 - **Outbox → Kafka** — Checkout enqueues via `OutboxService`; `OutboxPoller` publishes to topic `orders.created` through `OrderEventPublisher`. Event DTOs (`OrderCreatedEvent` and nested types) stay Jackson-friendly (constructors/setters as needed for consumers).
 - **`NotificationConsumer`** — Kafka listener on `orders.created`; currently logs a mock confirmation (production would wire a real email provider here). Password reset uses **`EmailService`** + `JavaMailSender` (MailHog in local Docker).
-- **`AuditService`** uses **`@Async`** so audit writes do not block the request thread (failure modes should be understood in production—logging/monitoring matter).
+- **Checkout audit** — after the checkout transaction commits, `OrderService` fans out audit + notification work with `StructuredTaskScope` on virtual threads and **`join()`s** before returning. Actor/traceId are snapshotted on the request thread (`AuditService.captureContext` / `logSync`). This is post-commit parallelism, not fire-and-forget latency hiding.
+- **Other audit callers** (e.g. status updates, admin role changes) still use **`AuditService.log`** (`@Async`) so those writes stay off the request thread.
 
 ---
 
@@ -209,6 +210,64 @@ Preferred order for new behavior:
 5. **Tests** at service + controller (+ repository if new queries)
 
 Keep changes scoped to the slice; avoid cross-feature repository calls from unrelated services without a deliberate boundary.
+
+---
+
+## JVM configuration
+
+### Garbage collector — Generational ZGC
+
+The production `Dockerfile` uses `-XX:+UseZGC`. On JDK 25, generational ZGC is the default when ZGC is enabled; the separate `-XX:+ZGenerational` flag was removed in JDK 24.
+
+**Why:** ZGC is a fully concurrent, sub-millisecond pause collector. Generational ZGC adds a young/old generation split that reduces the amount of live data scanned per cycle, lowering CPU overhead on the long-lived order and payment objects without sacrificing pause targets.
+
+**Trade-off:** Slightly higher memory footprint than G1 (ZGC pre-allocates coloured pointers). Acceptable at the container sizes this app targets.
+
+### JFR profiling
+
+`scripts/capture-checkout-jfr.sh` captures a 60-second `profile`-settings flight recording against a running app instance. Open the resulting `.jfr` file in JDK Mission Control (`jmc`).
+
+**Host JDK only:** The script targets a **host-run JDK process** (e.g. `mvn spring-boot:run` or a local JDK install), not the Docker JRE image. `jcmd` and `jps` are not available in `eclipse-temurin:25-jre`.
+
+What to look for:
+- **Virtual thread pinning** — if `synchronized` blocks inside library code pin a carrier thread, it shows as a `jdk.VirtualThreadPinned` event. As of JDK 24+, most Hibernate/JDBC synchronized blocks are unpinned.
+- **GC pause distribution** — should be microseconds under ZGC, not milliseconds.
+- **Hot allocation paths** — a flame graph of `jdk.ObjectAllocationInNewTLAB` identifies which service methods create the most short-lived objects.
+
+### GraalVM native image
+
+The `native` Maven profile (`mvn -Pnative native:compile`) produces a standalone binary with no JVM required.
+
+**Intended scope (unverified until GraalVM native-image succeeds):** Spring MVC controllers, Flyway, Spring Data JPA (H2 in the dev profile for unit tests), Resilience4j, JWT.
+
+**Known limitations:**
+- **Jersey** — JAX-RS runtime uses reflection heavily. Native + Jersey compatibility is **unverified**; no native-profile dependency exclusion is implemented. The JVM image remains the production default; native is an optional second artifact.
+- **Kafka** — Kafka client requires network access at startup; test with a live broker, not H2 mode.
+- **Testcontainers** — cannot be used inside a native image test; integration tests run on the JVM image.
+
+**Why bother with native?** Startup: JVM image is ~8s; native is typically under 500ms. Memory at idle: JVM ~350 MB RSS; native ~80 MB. Those numbers matter for scale-to-zero (Kubernetes HPA, serverless).
+
+Build the optional Docker native image explicitly (JVM `runtime` stage remains the default):
+
+```bash
+docker build --target native-runtime -t ecommerce-api:native .
+```
+
+**Local build status (Task 5):** `--enable-preview` is propagated into compiler, surefire, `spring-boot-maven-plugin` (`jvmArguments` + `compilerArguments` for AOT), and `native-maven-plugin` `jvmArgs` only (omitted from `buildArgs` — native-image may reject it). With Temurin JDK 25, `mvn -Pnative package -DskipTests` completes Spring Boot AOT but fails at `native-image` because GraalVM is not installed (`JAVA_HOME` is not a GraalVM distribution). Install GraalVM 25 and re-run to produce `target/ecommerce-api`. The Dockerfile `native-build` stage runs the same Maven `-Pnative` flow (unvalidated in Docker). Jersey reachability was not exercised — treat `/jersey/*` as JVM-only until a native image builds cleanly.
+
+### Capstone evidence
+
+Recorded on **Apple Silicon (arm64), macOS 14.6.1**, **2026-09-10**. Load and container metrics to be captured with `scripts/checkout-load.sh` and `docker stats` as described in the task brief.
+
+| Metric | JVM (ZGC, Java 25) | Native (GraalVM 25) |
+|--------|-------------------|---------------------|
+| Startup to first health | not measured | n/a |
+| RSS at idle | not measured | n/a |
+| 20-concurrent checkout (virtual threads) | not measured | n/a |
+
+**Why not measured:** Capstone load and container metrics were not captured in this pass. Native image was not built (GraalVM 25 / `native-image` not installed; see Task 5). Re-run `scripts/checkout-load.sh` against a running JVM instance (Docker or host) to populate the table above; build with `--target native-runtime` once GraalVM 25 is available.
+
+**Script:** `scripts/checkout-load.sh` fires N concurrent `POST /api/v1/orders/checkout` requests (unique idempotency keys), collects HTTP status codes via temp files (no double-fire), and prints success/fail/elapsed ms. Requires a running app, valid JWT, cart item, and shipping address.
 
 ---
 

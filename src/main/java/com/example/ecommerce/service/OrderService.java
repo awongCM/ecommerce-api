@@ -5,13 +5,19 @@ import com.example.ecommerce.domain.enums.OrderStatus;
 import com.example.ecommerce.dto.request.CheckoutRequest;
 import com.example.ecommerce.dto.response.OrderDTO;
 import com.example.ecommerce.exception.ResourceNotFoundException;
+import com.example.ecommerce.payment.PaymentOutcome;
 import com.example.ecommerce.repository.*;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.util.Objects;
+import java.util.concurrent.StructuredTaskScope;
 
+@Slf4j
 @Service
 public class OrderService {
 
@@ -98,18 +104,29 @@ public class OrderService {
         order = orderRepository.save(order);
 
         // 5. Process payment (circuit breaker lives inside PaymentService)
-        try {
-            paymentService.processPayment(order, request.getPaymentToken());
-            order.transitionTo(OrderStatus.CONFIRMED);
-        } catch (Exception e) {
-            // Release inventory if payment fails
-            for (CartItem item : cart.getItems()) {
-                inventoryService.releaseStock(
-                    item.getProduct().getId(), item.getQuantity());
+        PaymentOutcome outcome = paymentService.processPayment(order, request.getPaymentToken());
+
+        switch (outcome) {
+            case PaymentOutcome.Captured c -> {
+                order.transitionTo(OrderStatus.CONFIRMED);
+                log.info("Checkout captured, ref={}", c.gatewayReference());
             }
-            order.transitionTo(OrderStatus.CANCELLED);
-            orderRepository.save(order);
-            throw new IllegalStateException("Payment failed: " + e.getMessage());
+            case PaymentOutcome.GatewayUnavailable u -> {
+                for (CartItem item : cart.getItems()) {
+                    inventoryService.releaseStock(item.getProduct().getId(), item.getQuantity());
+                }
+                order.transitionTo(OrderStatus.CANCELLED);
+                orderRepository.save(order);
+                throw new IllegalStateException("Payment gateway unavailable: " + u.reason());
+            }
+            case PaymentOutcome.Failed f -> {
+                for (CartItem item : cart.getItems()) {
+                    inventoryService.releaseStock(item.getProduct().getId(), item.getQuantity());
+                }
+                order.transitionTo(OrderStatus.CANCELLED);
+                orderRepository.save(order);
+                throw new IllegalStateException("Payment failed: " + f.reason());
+            }
         }
 
         // 6. Clear the cart
@@ -118,14 +135,49 @@ public class OrderService {
 
         Order savedOrder = orderRepository.save(order);
 
-        // 7. Outbox row commits with the order; OutboxPoller publishes to Kafka
+        // 7. Outbox stays in the checkout transaction (transactional outbox pattern).
         outboxService.enqueueOrderCreated(savedOrder);
 
-        // 8. Async audit log — does not block the response
-        auditService.log("Order", savedOrder.getId().toString(),
-            "CREATED", null, savedOrder.getOrderNumber());
+        // 8. Snapshot request-thread context, then fan out after commit on virtual threads.
+        AuditService.AuditContext auditContext = auditService.captureContext();
+        registerPostCheckoutAfterCommit(savedOrder, customerId, auditContext);
 
         return OrderDTO.from(savedOrder);
+    }
+
+    private void registerPostCheckoutAfterCommit(Order savedOrder, Long customerId,
+                                                 AuditService.AuditContext auditContext) {
+        TransactionSynchronizationManager.registerSynchronization(
+            new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    postCheckoutTasks(savedOrder, customerId, auditContext);
+                }
+            });
+    }
+
+    /**
+     * Runs post-commit tasks in parallel using virtual threads via StructuredTaskScope.
+     * Outbox enqueue stays in {@link #processNewCheckout} so it commits with the order;
+     * only independent, non-transactional work belongs here.
+     */
+    private void postCheckoutTasks(Order savedOrder, Long customerId,
+                                   AuditService.AuditContext auditContext) {
+        try (var scope = StructuredTaskScope.open(
+                StructuredTaskScope.Joiner.awaitAllSuccessfulOrThrow(),
+                cfg -> cfg.withThreadFactory(Thread.ofVirtual().factory()))) {
+            scope.fork(() -> auditService.logSync(
+                "Order", savedOrder.getId().toString(),
+                "CHECKOUT", null, savedOrder.getOrderNumber(),
+                auditContext.actor(), auditContext.traceId()));
+            scope.fork(() -> log.info(
+                "Checkout notification for order {} (customer {})",
+                savedOrder.getOrderNumber(), customerId));
+            scope.join();
+        } catch (Exception e) {
+            log.warn("Post-checkout tasks partially failed for order {}: {}",
+                savedOrder.getOrderNumber(), e.getMessage());
+        }
     }
 
     @Transactional(readOnly = true)

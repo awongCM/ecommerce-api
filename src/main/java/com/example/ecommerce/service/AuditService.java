@@ -11,6 +11,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class AuditService {
 
+    /** Request-thread snapshot of security/MDC state for forked audit writes. */
+    public record AuditContext(String actor, String traceId) {}
+
     private final AuditLogRepository auditLogRepository;
 
     public AuditService(AuditLogRepository auditLogRepository) {
@@ -21,10 +24,28 @@ public class AuditService {
     @Async
     public void log(String entityType, String entityId,
                     String action, String oldValue, String newValue) {
-        String actor = getCurrentUser();
+        logSync(entityType, entityId, action, oldValue, newValue);
+    }
+
+    /** Capture actor and traceId on the request thread before virtual-thread fork. */
+    public AuditContext captureContext() {
+        return new AuditContext(getCurrentUser(), MDC.get("traceId"));
+    }
+
+    /** Synchronous audit write for StructuredTaskScope fan-out (join waits for completion). */
+    public void logSync(String entityType, String entityId,
+                        String action, String oldValue, String newValue) {
+        logSync(entityType, entityId, action, oldValue, newValue,
+            getCurrentUser(), MDC.get("traceId"));
+    }
+
+    /** Synchronous audit write with explicit request-thread context (post-commit fan-out). */
+    public void logSync(String entityType, String entityId,
+                        String action, String oldValue, String newValue,
+                        String actor, String traceId) {
         AuditLog entry = new AuditLog(entityType, entityId,
             action, actor, oldValue, newValue);
-        entry.setTraceId(MDC.get("traceId"));
+        entry.setTraceId(traceId);
         auditLogRepository.save(entry);
     }
 
