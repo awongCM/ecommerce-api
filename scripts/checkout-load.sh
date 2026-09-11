@@ -8,6 +8,25 @@
 #   - A customer account with at least one address and one cart item
 #
 # Output: concurrency count, success count, failure count, total time.
+#
+# --- Maintaining / updating this script by hand ---
+# Edit this file directly; there is no generator. Prefer env vars over new flags unless UX needs it.
+#
+# Knobs (env, with defaults above):
+#   BASE_URL, TOKEN (required), SHIPPING_ADDRESS_ID, CONCURRENCY, PAYLOAD_TEMPLATE
+# Keep PAYLOAD_TEMPLATE aligned with CheckoutRequest JSON (shippingAddressId, idempotencyKey,
+# paymentToken). Unique idempotencyKey per request is required — do not share one key across the loop.
+#
+# Invariants:
+#   - Write each HTTP status to its own temp file (no shared counter under &); then tally after wait.
+#   - Treat 200 and 201 as success; print non-success codes to stderr.
+#   - One cart is shared across concurrent requests: after the first success, later calls often fail
+#     empty-cart — expected for this harness; change seed data (or per-user carts) if you need N
+#     true successes for capstone evidence in ARCHITECTURE.md.
+#
+# After editing: chmod +x if needed; register/login for TOKEN; ensure cart + address; run with
+# CONCURRENCY=2 first, then raise. Update ARCHITECTURE.md "Capstone evidence" if metrics/script
+# contract changes. Capstone context: context/java25-disciplines.md (discipline 9).
 
 set -euo pipefail
 
