@@ -5,7 +5,7 @@ Short onboarding for humans and AI assistants working in this repository.
 ## Read first
 
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** — Layering, transactions (especially checkout, payment, and outbox), security model, messaging, resilience, testing strategy, feature slice order.
-- **[README.md](./README.md)** — Stack, local run (`docker-compose`), API surface, known gaps (e.g. admin bootstrap).
+- **[README.md](./README.md)** — Stack, diagrams, local run, API surface. Known gaps: capstone metrics not measured; native/Jersey/AI unverified. First admin: Flyway seed in `dev`; `ADMIN_EMAIL`/`ADMIN_PASSWORD` in docker.
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** — Health probes, env vars, Kubernetes/Docker notes.
 
 ## Stack (quick)
@@ -15,6 +15,7 @@ Short onboarding for humans and AI assistants working in this repository.
 - Parallel JAX-RS: Jersey under **`/jersey`** (same domain logic; do not let the two stacks drift unintentionally).
 - JPA + **Flyway** (PostgreSQL in `docker` profile; H2 in `dev`), JWT security, Kafka (transactional outbox), Resilience4j, Actuator.
 - Payments: **mock** (default) or **Stripe** (`app.payment-gateway.provider`).
+- Optional Spring AI order-anomaly triage (post-commit Kafka only; `ORDER_ANOMALY_TRIAGE_ENABLED` default off).
 
 ## Build and test
 
@@ -30,9 +31,10 @@ Use `docker-compose up -d` when you need Postgres, Kafka, MailHog, or full integ
 
 ## Sensitive areas (read ARCHITECTURE before large edits)
 
-- **Checkout** — `OrderService` idempotency, inventory optimistic locking / retries, payment in the **same** transaction as order creation, **outbox** for Kafka publish after commit.
+- **Checkout** — `OrderService` idempotency, inventory optimistic locking / retries, payment in the **same** transaction as order creation, **outbox** for Kafka publish after commit. Do not put LLM or AI calls on this path.
 - **Security** — `SecurityConfig`, JWT filter chain, `@PreAuthorize` vs URL matchers, actuator exposure, Stripe webhook path.
-- **Schema** — `src/main/resources/db/migration/` is the source of truth (currently V1–V7); keep entities aligned with Flyway.
+- **Schema** — `src/main/resources/db/migration/` is the source of truth (currently V1–V8); keep entities aligned with Flyway. Next unused shared version is **V9**. Dev-only Flyway lives in `classpath:db/dev` (local admin seed).
+- **AI triage** — `OrderAnomalyTriageConsumer` / `OrderAnomalyTriageService` only; flag default off; LLM outside DB TX; docker fail-fast without `SPRING_AI_OPENAI_API_KEY`.
 
 ## Cursor
 

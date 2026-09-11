@@ -12,6 +12,9 @@ services:
       - SPRING_DATASOURCE_PASSWORD=ecommercepass
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - JWT_SECRET=myLocalDevSecretKeyChangeInProduction
+      # First admin (optional). Uncomment to bootstrap when no ADMIN exists:
+      # - ADMIN_EMAIL=admin@example.com
+      # - ADMIN_PASSWORD=change-me
     depends_on:
       postgres:
         condition: service_healthy

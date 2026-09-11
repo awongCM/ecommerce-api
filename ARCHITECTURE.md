@@ -26,7 +26,7 @@ Security, persistence, and business logic are shared; only the web layer differs
 | Web (errors) | `exception/GlobalExceptionHandler` | Maps exceptions to HTTP status + `ErrorResponse` |
 | Domain | `domain/` | JPA entities, enums; mirrors Flyway schema |
 | Application API | `service/` | Transactions, orchestration, rules |
-| Persistence | `repository/` | Spring Data JPA (11 repositories) |
+| Persistence | `repository/` | Spring Data JPA (12 repositories) |
 | Contracts | `dto/request`, `dto/response` | API payloads; keep entities off the wire |
 | Security | `config/SecurityConfig`, `security/` | JWT filter chain, `UserDetails`, token validation |
 | Payments | `payment/`, `payment/stripe/` | Gateway abstraction; mock or Stripe implementations |
@@ -75,7 +75,7 @@ Security, persistence, and business logic are shared; only the web layer differs
 ## Persistence and schema
 
 - **PostgreSQL** in Docker/staging/production-style profiles (`application-docker.yml`); **H2** for the default `dev` profile (`application-dev.yml`).
-- **Flyway** migrations `V1`–`V7`:
+- **Flyway** migrations `V1`–`V8`:
   - `V1` — customers, addresses
   - `V2` — products, categories
   - `V3` — orders, carts
@@ -83,6 +83,8 @@ Security, persistence, and business logic are shared; only the web layer differs
   - `V5` — password reset tokens
   - `V6` — transactional outbox (`outbox_events`)
   - `V7` — processed Stripe webhook events (`processed_webhook_events`)
+  - `V8` — order anomaly triage (`order_anomaly_triage`)
+- **Dev-only Flyway** (`classpath:db/dev`, `dev` profile): repeatable `R__seed_local_admin.sql` seeds `admin@localhost` / `adminpass`. Docker/prod do **not** apply this location.
 - Treat SQL as the **source of truth** for tables and FKs; align `domain/` mappings and cascades with those constraints.
 
 ---
@@ -91,6 +93,7 @@ Security, persistence, and business logic are shared; only the web layer differs
 
 - **Outbox → Kafka** — Checkout enqueues via `OutboxService`; `OutboxPoller` publishes to topic `orders.created` through `OrderEventPublisher`. Event DTOs (`OrderCreatedEvent` and nested types) stay Jackson-friendly (constructors/setters as needed for consumers).
 - **`NotificationConsumer`** — Kafka listener on `orders.created`; currently logs a mock confirmation (production would wire a real email provider here). Password reset uses **`EmailService`** + `JavaMailSender` (MailHog in local Docker).
+- **AI-native triage (discipline 8)** — **`OrderAnomalyTriageConsumer`** listens on `orders.created` in consumer group `order-anomaly-triage` (sibling to notifications, not inside checkout). When `app.features.order-anomaly-triage=true`, **`OrderAnomalyTriageService`** loads payment data in a short read transaction, calls **Spring AI** `ChatClient` **outside** any DB transaction, then persists a structured label (`LIKELY_FRAUD`, `GATEWAY_NOISE`, `CUSTOMER_RETRY`, `OPS_REVIEW`) to **`order_anomaly_triage`**. External providers receive redacted PII in prompts (see DEPLOYMENT). Dev/tests use a **stub `ChatModel`**; docker/prod require `SPRING_AI_OPENAI_API_KEY` when triage is enabled (startup fails fast otherwise). **Never** on the checkout/payment transaction. GraalVM native + AI SDK reachability is out of scope (JVM default).
 - **Checkout audit** — after the checkout transaction commits, `OrderService` fans out audit + notification work with `StructuredTaskScope` on virtual threads and **`join()`s** before returning. Actor/traceId are snapshotted on the request thread (`AuditService.captureContext` / `logSync`). This is post-commit parallelism, not fire-and-forget latency hiding.
 - **Other audit callers** (e.g. status updates, admin role changes) still use **`AuditService.log`** (`@Async`) so those writes stay off the request thread.
 

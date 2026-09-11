@@ -1,8 +1,32 @@
 # Java 25 disciplines workstream
 
+## 2026-09-11 — Discipline 8 shipped (order anomaly triage)
+
+Implemented on `feature/ai-native-discipline-8` as **PR #4** (https://github.com/awongCM/ecommerce-api/pull/4), after PR #3 merged to `main`. Design spec: `docs/superpowers/specs/2026-09-11-ai-native-order-anomaly-triage-design.md`.
+
+### What landed
+
+- Sibling Kafka consumer `OrderAnomalyTriageConsumer` on `orders.created` (group `order-anomaly-triage`), **not** inside `OrderService.checkout` or post-commit STS.
+- Spring AI **1.1.8** BOM + `spring-ai-starter-model-openai`; structured classify only (no RAG, no tools, no auto-refund).
+- Labels: `LIKELY_FRAUD` / `GATEWAY_NOISE` / `CUSTOMER_RETRY` / `OPS_REVIEW` → Flyway **V8** `order_anomaly_triage`.
+- Flag `app.features.order-anomaly-triage` / `ORDER_ANOMALY_TRIAGE_ENABLED` **default off**.
+- Dev/tests: `@Primary` `StubChatModel` (`OPS_REVIEW`). Docker: OpenAI when key set; **fail-fast** at startup if flag on + stub (`OrderAnomalyTriageStartupValidator`).
+- LLM call is **outside** DB transactions (read TX → classify → write TX). Concurrent insert on unique `order_id` is treated as success (`DataIntegrityViolationException`).
+- External-provider prompts **redact** name, email local-part, card last4, and gateway ref (see DEPLOYMENT privacy note).
+
+### Review findings that bit us
+
+- Dual constructors on `OrderAnomalyTriageService` confused Spring (`No default constructor found`) — mark the production ctor `@Autowired` and keep the test factory private/`forTests`.
+- Mockito strict stubbing + unused `executeWithoutResult` stubs on passthrough `TransactionTemplate` mocks — use `lenient()`.
+- Do **not** hold a DB TX across `ChatClient.call()`.
+
+### Still out of scope
+
+Failed-payment Kafka/audit substrate; RAG; admin UI; notify on label; Jersey mirror; GraalVM AI reachability; LLM in checkout.
+
 ## 2026-09-11 — AI-native (discipline 8) follow-up decisions
 
-Decided in chat after PR #3 work (not implemented yet).
+Decided in chat after PR #3 work (implemented later the same day — see entry above).
 
 ### Repo shape
 
@@ -46,7 +70,7 @@ Decided in chat after PR #3 work (not implemented yet).
 | 5 | Concurrency | Virtual threads enabled; `StructuredTaskScope` **after commit** for audit/notify; outbox stays in checkout TX |
 | 7 | Native | `-Pnative` + Docker `native-runtime` stage; JVM image remains default |
 | 9 | Capstone | `scripts/checkout-load.sh` + honest “not measured” table in ARCHITECTURE |
-| 8 | AI | Intentionally skipped |
+| 8 | AI | Post-commit `OrderAnomalyTriageConsumer` + Spring AI classify (separate PR from #3) |
 
 Platform gate: Java **25** + Spring Boot **3.5.x**, `--enable-preview` for StructuredTaskScope.
 
@@ -92,15 +116,15 @@ mvn -q clean verify
 - After-commit STS + `AuditContext` snapshot (MDC/SecurityContext do not auto-propagate)
 - CI workflow: `.github/workflows/ci.yml` (Temurin 25 `mvn verify`)
 
-### Why discipline 8 (AI-native Java) was skipped
+### Why discipline 8 was deferred from PR #3
 
 Blog intent: Spring AI / LangChain4j on the JVM (RAG, agents), not “call an LLM from a controller once.”
 
-Deferred because:
+Deferred from the platform PR because:
 1. **Scope** — this PR’s job was the platform restart (25 / Boot 3.5) + prove 2/4/5/6/7/9 on checkout; AI is a second product slice.
 2. **Hot path** — checkout/payment must stay deterministic, latency-bounded, and cheap; an LLM on that path fights ARCHITECTURE invariants.
 3. **Missing substrate** — no vector store, embedding pipeline, document corpus, or Spring AI/LangChain4j deps; no secrets/runbook for model providers.
 4. **Native already fragile** — Jersey + GraalVM still unverified; adding AI SDKs would explode reachability work before the JVM default is solid.
 5. **Honest craft** — a thin “classify this string” wrapper would tick a table cell without proving AI-on-JVM skill.
 
-Sensible later shape: **offline / post-commit** path (e.g. payment-anomaly triage over outbox/Kafka events), never inside the checkout TX.
+Sensible later shape (now implemented in PR #4): **offline / post-commit** path (payment/order anomaly triage over Kafka `orders.created`), never inside the checkout TX.

@@ -38,6 +38,18 @@ There is **no committed `application-prod.yml`**. Production-style deployments u
 | `APP_BASE_URL` | No | `http://localhost:3000` | Frontend base URL embedded in reset links |
 | `MAIL_HOST` | Docker | `mailhog` | SMTP host (MailHog in docker-compose) |
 | `MAIL_PORT` | Docker | `1025` | SMTP port |
+| `ORDER_ANOMALY_TRIAGE_ENABLED` | No | `false` | Enable post-commit AI order anomaly triage (`OrderAnomalyTriageConsumer`) |
+| `SPRING_AI_OPENAI_API_KEY` | **Yes** when triage enabled in docker | — | OpenAI API key for live classification. **Required** with triage in docker profile — app fails fast at startup if missing. Dev uses stub model by default. |
+| `ADMIN_EMAIL` | Docker first-admin | — | If no `ADMIN` exists, `AdminBootstrap` creates this user. Skip (warn) when unset. |
+| `ADMIN_PASSWORD` | With `ADMIN_EMAIL` | — | Password for the bootstrapped admin. Never commit a real value. |
+| `ADMIN_FIRST_NAME` | No | `Admin` | First name for bootstrapped admin |
+| `ADMIN_LAST_NAME` | No | `User` | Last name for bootstrapped admin |
+
+### AI order anomaly triage — privacy note
+
+When triage is enabled with a real OpenAI key (`docker` profile), prompts sent to the provider include **redacted** customer data (email domain only, no full name, masked gateway reference, no card last4). Order totals, item counts, shipping city, and payment status/amount are still sent for classification.
+
+Before enabling in production: review your OpenAI data-processing terms, retention settings, and whether this classification use case meets your privacy/compliance requirements.
 
 ---
 
