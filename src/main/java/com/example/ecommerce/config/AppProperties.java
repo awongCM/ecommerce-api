@@ -14,6 +14,7 @@ public class AppProperties {
     private PaymentGateway paymentGateway = new PaymentGateway();
     private Stripe stripe = new Stripe();
     private Features features = new Features();
+    private Admin admin = new Admin();
     private int maxCartItems = 50;
     private BigDecimal maxOrderAmount = BigDecimal.valueOf(10000);
 
@@ -64,6 +65,23 @@ public class AppProperties {
         }
     }
 
+    /** First-admin bootstrap for the docker profile (env-driven; never required). */
+    public static class Admin {
+        private String email = "";
+        private String password = "";
+        private String firstName = "Admin";
+        private String lastName = "User";
+
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+        public String getPassword() { return password; }
+        public void setPassword(String password) { this.password = password; }
+        public String getFirstName() { return firstName; }
+        public void setFirstName(String firstName) { this.firstName = firstName; }
+        public String getLastName() { return lastName; }
+        public void setLastName(String lastName) { this.lastName = lastName; }
+    }
+
     public Jwt getJwt() { return jwt; }
     public void setJwt(Jwt jwt) { this.jwt = jwt; }
     public PaymentGateway getPaymentGateway() { return paymentGateway; }
@@ -72,6 +90,8 @@ public class AppProperties {
     public void setStripe(Stripe stripe) { this.stripe = stripe; }
     public Features getFeatures() { return features; }
     public void setFeatures(Features features) { this.features = features; }
+    public Admin getAdmin() { return admin; }
+    public void setAdmin(Admin admin) { this.admin = admin; }
     public int getMaxCartItems() { return maxCartItems; }
     public void setMaxCartItems(int n) { this.maxCartItems = n; }
     public BigDecimal getMaxOrderAmount() { return maxOrderAmount; }

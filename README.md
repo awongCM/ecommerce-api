@@ -1,20 +1,23 @@
 # ecommerce-api
 
-A production-grade RESTful ecommerce API built with Spring Boot 3.x.
+A production-grade RESTful ecommerce API built with Spring Boot 3.5.
+
+Layering, transactions, and testing: **[ARCHITECTURE.md](./ARCHITECTURE.md)**. Env vars and probes: **[DEPLOYMENT.md](./DEPLOYMENT.md)**. Agent onboarding: **[AGENTS.md](./AGENTS.md)**.
 
 ## Tech Stack
 - Java 25 (Eclipse Temurin 25), Spring Boot 3.5
 - Preview features enabled at compile/test time (`--enable-preview` in `pom.xml`); JVM `java -jar` launches need the same flag (included in the Dockerfile `ENTRYPOINT`)
 - Spring Security + JWT authentication
-- Spring Data JPA + PostgreSQL + Flyway
-- Apache Kafka (event-driven notifications)
+- Spring Data JPA + PostgreSQL + Flyway (V1–V8)
+- Apache Kafka (transactional outbox → `orders.created`)
 - Resilience4j (circuit breaker, retry, rate limiter)
+- Spring AI 1.1.x — optional post-commit order anomaly triage (feature-flagged; stub model in `dev`)
 - Jersey (JAX-RS) — parallel implementation for comparison
-- Docker + Kubernetes-ready
+- Docker (Temurin 25 JRE + ZGC default; optional GraalVM native stage) + Kubernetes-ready ([`k8s/`](./k8s/))
 
 ## Architecture
 
-Design heuristics (layering, transactions, security, testing) live in [ARCHITECTURE.md](./ARCHITECTURE.md).
+Design heuristics (layering, transactions, security, testing) live in [ARCHITECTURE.md](./ARCHITECTURE.md). If this diagram disagrees with ARCHITECTURE on payment TX or outbox, treat **ARCHITECTURE.md** as authoritative.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -35,6 +38,7 @@ Design heuristics (layering, transactions, security, testing) live in [ARCHITECT
 │  │ CartController     │  │       │  │ JerseyExceptionMap │  │
 │  │ OrderController    │  │       │  │                    │  │
 │  │ AdminController    │  │       │  │                    │  │
+│  │ StripeWebhookCtrl  │  │       │  │                    │  │
 │  └────────────────────┘  │       │  └────────────────────┘  │
 │  GlobalExceptionHandler  │       │                          │
 └──────────┬───────────────┘       └──────────┬───────────────┘
@@ -70,7 +74,10 @@ Design heuristics (layering, transactions, security, testing) live in [ARCHITECT
 │  │                │  │ (REQUIRED: same │  │ (non-checkout│   │
 │  │                │  │ TX as checkout)│  │  callers)    │   │
 │  └────────────────┘  └───────┬────────┘  └──────────────┘   │
-│                              │                               │
+│                                                              │
+│  OrderAnomalyTriageService (post-commit Kafka only;          │
+│  ChatClient outside DB TX; flag default off)                 │
+│                                                              │
 └──────────────┬───────────────┼───────────────────────────────┘
                │               │
                ▼               ▼
@@ -78,23 +85,24 @@ Design heuristics (layering, transactions, security, testing) live in [ARCHITECT
 │  PERSISTENCE LAYER   │  │  EXTERNAL SERVICES               │
 │                      │  │                                    │
 │  Spring Data JPA     │  │  Payment Gateway (mock | stripe)  │
-│  11 repositories     │  │  ┌────────────────────────────┐   │
+│  12 repositories     │  │  ┌────────────────────────────┐   │
 │  ┌────────────────┐  │  │  │ Resilience4j               │   │
 │  │ CustomerRepo   │  │  │  │ • CircuitBreaker: 50%/10   │   │
 │  │ ProductRepo    │  │  │  │ • Retry: 3 attempts        │   │
 │  │ CategoryRepo   │  │  │  │ • RateLimiter: 100/sec     │   │
 │  │ CartRepo       │  │  │  └────────────────────────────┘   │
 │  │ OrderRepo      │  │  │                                    │
-│  │ PaymentRepo    │  │  └──────────────────────────────────┘
-│  │ AuditLogRepo   │  │
-│  │ AddressRepo    │  │
-│  │ PwdResetTokRepo│  │
-│  │ OutboxEventRepo│  │
+│  │ PaymentRepo    │  │  │  Spring AI ChatClient              │
+│  │ AuditLogRepo   │  │  │  (stub in dev; OpenAI when         │
+│  │ AddressRepo    │  │  │   triage flag + API key)           │
+│  │ PwdResetTokRepo│  │  │                                    │
+│  │ OutboxEventRepo│  │  └──────────────────────────────────┘
 │  │ WebhookEventRepo│ │
+│  │ AnomalyTriageRepo││
 │  └────────────────┘  │
 │                      │
 │  Flyway migrations   │
-│  V1–V7 (DDL)        │
+│  V1–V8 (DDL)        │
 └──────────┬───────────┘
            │
            ▼
@@ -108,7 +116,8 @@ Design heuristics (layering, transactions, security, testing) live in [ARCHITECT
 │  categories, carts, cart_items, orders,  │
 │  order_items, payments, audit_logs,      │
 │  password_reset_tokens, outbox_events,   │
-│  processed_webhook_events                │
+│  processed_webhook_events,               │
+│  order_anomaly_triage                    │
 └──────────────────────────────────────────┘
 
                ┌──────────────────────────────────────────┐
@@ -118,10 +127,12 @@ Design heuristics (layering, transactions, security, testing) live in [ARCHITECT
   ──enqueue──► │  OutboxPoller → OrderEventPublisher       │
                │  ──► Kafka Topic: "orders.created"       │
                │        │                                  │
-               │        ▼                                  │
-               │  NotificationConsumer                     │
-               │  (groupId: notification-service)          │
-               │  ──► Order email (log mock; reset uses SMTP)│
+               │        ├──────────────────────┐           │
+               │        ▼                      ▼           │
+               │  NotificationConsumer   OrderAnomalyTriageConsumer
+               │  (notification-service) (order-anomaly-triage)
+               │  ──► mock email log     ──► classify + persist
+               │                         (skipped when flag off)
                │                                           │
                │  KafkaConfig:                             │
                │  • Producer: acks=all, idempotent         │
@@ -144,18 +155,32 @@ Design heuristics (layering, transactions, security, testing) live in [ARCHITECT
 ┌─────────────────────────────────────────────────────────────┐
 │                    DEPLOYMENT                                │
 │                                                              │
-│  Docker (multi-stage build)                                  │
+│  Docker (multi-stage build; default target = JVM runtime)    │
 │  ┌───────────┐ ┌──────────┐ ┌─────────┐ ┌───────────────┐   │
 │  │ App :8080 │ │ PG :5432 │ │Kafka    │ │ Kafka UI      │   │
-│  │ (JRE 17)  │ │ (15-alp) │ │:9092    │ │ :8090         │   │
-│  └───────────┘ └──────────┘ │Zookeeper│ └───────────────┘   │
-│                              │:2181    │                      │
-│  Kubernetes                  └─────────┘                     │
-│  • 3 replicas, LoadBalancer                                  │
-│  • Readiness + Liveness probes via /actuator/health          │
+│  │ Temurin   │ │ (15-alp) │ │:9092    │ │ :8090         │   │
+│  │ 25-jre    │ │          │ │Zookeeper│ └───────────────┘   │
+│  │ ZGC +     │ │          │ │:2181    │                      │
+│  │ preview   │ │          │ └─────────┘  MailHog :8025      │
+│  └───────────┘ └──────────┘                                  │
+│  Optional: docker build --target native-runtime              │
+│  Kubernetes: k8s/local (Colima) + k8s/deployment.yaml        │
+│  • Probes: /actuator/health/liveness + readiness             │
 │  • ConfigMap + Secrets for env vars                          │
 └──────────────────────────────────────────────────────────────┘
 ```
+
+## Build and test
+
+Use **JDK 25** (`mvn -v` must show 25.x). sdkman often defaults to 17 and overrides Homebrew — see [context/java25-disciplines.md](./context/java25-disciplines.md).
+
+```bash
+export JAVA_HOME="$HOME/.sdkman/candidates/java/25.0.2-tem"   # or Homebrew Temurin 25
+export PATH="$JAVA_HOME/bin:$PATH"
+mvn -q verify
+```
+
+Checkout integration tests need Docker (Testcontainers Postgres). Without Docker they skip; `mvn verify` still passes.
 
 ## Running Locally
 
@@ -174,10 +199,23 @@ docker-compose up -d
 
 `docker-compose` activates the **`docker` profile** (PostgreSQL + Kafka + MailHog). The H2 console is available only when running with the **`dev` profile** (e.g. `mvn spring-boot:run` without Docker): http://localhost:8080/h2-console
 
+Default payment provider is **mock** — gateway health may show DOWN; that is expected.
+
+Optional AI triage: `ORDER_ANOMALY_TRIAGE_ENABLED=true` plus `SPRING_AI_OPENAI_API_KEY` in docker (app **fails fast** if the flag is on without a real key). Dev profile uses a stub model. See [DEPLOYMENT.md](./DEPLOYMENT.md).
+
+### Maven on the host (`dev` profile)
+
+H2 in-memory. Kafka expected on `localhost:9092` if you exercise outbox/consumers.
+
+```bash
+mvn spring-boot:run
+```
+
 ### Docker notes
-- Build stage uses `maven:3.9-eclipse-temurin-17` — no Maven wrapper needed
-- Runtime stage uses `eclipse-temurin:17-jre` (Ubuntu) — works on ARM64 (Apple Silicon) and AMD64
+- Build stage uses `maven:3.9-eclipse-temurin-25` — no Maven wrapper needed
+- Runtime stage uses `eclipse-temurin:25-jre` (Ubuntu) — ARM64 (Apple Silicon) and AMD64; `--enable-preview`, `-XX:+UseZGC`
 - Non-root user (`appuser`) runs the process for security
+- Optional native image: `docker build --target native-runtime -t ecommerce-api:native .` (GraalVM 25; Jersey native still unverified)
 
 ## API Endpoints
 
@@ -265,40 +303,18 @@ GET /actuator/health/readiness    — Readiness probe (DB, etc.; gateway exclude
 GET /actuator/inventory           — Low stock report (admin)
 GET /actuator/metrics             — Prometheus metrics
 
-## Known Gaps / TODO
+## Known gaps
 
-### Admin Bootstrapping (needs implementation)
-The admin role-management endpoint requires `ROLE_ADMIN` to call, but there is currently
-no way to create the first admin through the API (chicken-and-egg problem).
+### First admin
 
-**Options to implement:**
+**Dev (`mvn spring-boot:run`):** Flyway seeds `admin@localhost` / `adminpass` (local-only; not applied in docker).
 
-- [ ] **Option A — `DataInitializer` on startup (recommended for prod)**
-  A `CommandLineRunner` bean that checks `countByRole(ADMIN) == 0` on startup and
-  creates a default admin from environment variables (`ADMIN_EMAIL`, `ADMIN_PASSWORD`).
-  No hardcoded credentials in source code.
+**Docker / prod:** set `ADMIN_EMAIL` and `ADMIN_PASSWORD`. `AdminBootstrap` creates that user when no `ADMIN` exists; if the vars are unset, the app still starts and logs a warning. Do not commit production passwords.
 
-- [ ] **Option B — Flyway seed migration (simple, good for dev)**
-  Add a new migration (for example `V8__seed_admin.sql`) that inserts a bcrypt-hashed admin account. Suitable for
-  local development; avoid hardcoding real credentials for production. (`V6`/`V7` are already used for outbox and webhook idempotency.)
-
-- [ ] **Option C — Both** — Flyway migration for dev profile, `DataInitializer` for prod.
-
-Until this is resolved, insert an admin manually in the database.
-
-**Docker Compose (PostgreSQL):**
-```bash
-docker exec -it ecommerce-postgres psql -U ecommerceuser -d ecommercedb
-```
-```sql
-INSERT INTO customers (first_name, last_name, email, password_hash)
-VALUES ('Admin', 'User', 'admin@example.com', '<bcrypt-hash>');
-
-INSERT INTO customer_roles (customer_id, role)
-SELECT id, 'ADMIN' FROM customers WHERE email = 'admin@example.com';
-```
-
-**Dev profile (H2):** use the H2 console at http://localhost:8080/h2-console with the same SQL (JDBC URL from `application-dev.yml`).
+### Other limits
+- Capstone load/native RSS numbers in ARCHITECTURE are still **not measured**.
+- Native image: JVM remains the production default; Jersey + GraalVM reachability is unverified; AI starters are JVM-only.
+- Failed-payment checkouts do **not** emit Kafka events (rollback); triage only sees successful `orders.created`.
 
 ---
 
@@ -313,4 +329,3 @@ SELECT id, 'ADMIN' FROM customers WHERE email = 'admin@example.com';
 - Checkout audit runs **after commit** via `StructuredTaskScope` (`logSync` + `join`); other callers still use `@Async` `AuditService.log`
 - Soft delete on products preserves order history integrity
 - Payment provider is pluggable: **mock** (default) or **Stripe** via `app.payment-gateway.provider`; Stripe webhooks dedupe via `processed_webhook_events`
-

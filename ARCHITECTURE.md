@@ -26,7 +26,7 @@ Security, persistence, and business logic are shared; only the web layer differs
 | Web (errors) | `exception/GlobalExceptionHandler` | Maps exceptions to HTTP status + `ErrorResponse` |
 | Domain | `domain/` | JPA entities, enums; mirrors Flyway schema |
 | Application API | `service/` | Transactions, orchestration, rules |
-| Persistence | `repository/` | Spring Data JPA (11 repositories) |
+| Persistence | `repository/` | Spring Data JPA (12 repositories) |
 | Contracts | `dto/request`, `dto/response` | API payloads; keep entities off the wire |
 | Security | `config/SecurityConfig`, `security/` | JWT filter chain, `UserDetails`, token validation |
 | Payments | `payment/`, `payment/stripe/` | Gateway abstraction; mock or Stripe implementations |
@@ -75,7 +75,7 @@ Security, persistence, and business logic are shared; only the web layer differs
 ## Persistence and schema
 
 - **PostgreSQL** in Docker/staging/production-style profiles (`application-docker.yml`); **H2** for the default `dev` profile (`application-dev.yml`).
-- **Flyway** migrations `V1`–`V7`:
+- **Flyway** migrations `V1`–`V8`:
   - `V1` — customers, addresses
   - `V2` — products, categories
   - `V3` — orders, carts
@@ -83,6 +83,8 @@ Security, persistence, and business logic are shared; only the web layer differs
   - `V5` — password reset tokens
   - `V6` — transactional outbox (`outbox_events`)
   - `V7` — processed Stripe webhook events (`processed_webhook_events`)
+  - `V8` — order anomaly triage (`order_anomaly_triage`)
+- **Dev-only Flyway** (`classpath:db/dev`, `dev` profile): repeatable `R__seed_local_admin.sql` seeds `admin@localhost` / `adminpass`. Docker/prod do **not** apply this location.
 - Treat SQL as the **source of truth** for tables and FKs; align `domain/` mappings and cascades with those constraints.
 
 ---

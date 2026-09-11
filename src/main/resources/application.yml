@@ -72,6 +72,11 @@ app:
   max-order-amount: 10000.00
   features:
     order-anomaly-triage: ${ORDER_ANOMALY_TRIAGE_ENABLED:false}
+  admin:
+    email: ${ADMIN_EMAIL:}
+    password: ${ADMIN_PASSWORD:}
+    first-name: ${ADMIN_FIRST_NAME:Admin}
+    last-name: ${ADMIN_LAST_NAME:User}
   mail:
     from: ${MAIL_FROM:noreply@ecommerce.example.com}
     base-url: ${APP_BASE_URL:http://localhost:3000}
