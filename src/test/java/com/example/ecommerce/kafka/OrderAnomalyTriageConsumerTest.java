@@ -41,4 +41,21 @@ class OrderAnomalyTriageConsumerTest {
 
         verify(triageService, never()).triage(org.mockito.ArgumentMatchers.any());
     }
+
+    @Test
+    void onOrderCreated_whenFlagOn_shouldDelegateToService() {
+        AppProperties.Features features = new AppProperties.Features();
+        features.setOrderAnomalyTriage(true);
+        org.mockito.Mockito.when(appProperties.getFeatures()).thenReturn(features);
+
+        OrderCreatedEvent event = new OrderCreatedEvent(
+            "1", "ORD-1", "a@test.com", "A Test",
+            BigDecimal.TEN, List.of(), "Sydney");
+        ConsumerRecord<String, OrderCreatedEvent> record =
+            new ConsumerRecord<>("orders.created", 0, 0L, "ORD-1", event);
+
+        consumer.onOrderCreated(record, 0, 0L);
+
+        verify(triageService).triage(event);
+    }
 }

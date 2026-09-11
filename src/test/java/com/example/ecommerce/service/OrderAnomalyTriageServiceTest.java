@@ -3,7 +3,6 @@ package com.example.ecommerce.service;
 import com.example.ecommerce.ai.StubChatModel;
 import com.example.ecommerce.domain.Payment;
 import com.example.ecommerce.domain.enums.AnomalyClassification;
-import com.example.ecommerce.domain.enums.PaymentStatus;
 import com.example.ecommerce.kafka.event.OrderCreatedEvent;
 import com.example.ecommerce.repository.OrderAnomalyTriageRepository;
 import com.example.ecommerce.repository.PaymentRepository;
@@ -14,6 +13,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.util.function.Consumer;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -29,6 +34,9 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -44,11 +52,14 @@ class OrderAnomalyTriageServiceTest {
     @BeforeEach
     void setUp() {
         StubChatModel stubChatModel = new StubChatModel();
-        service = new OrderAnomalyTriageService(
+        TransactionTemplate tx = passthroughTransactionTemplate();
+        service = OrderAnomalyTriageService.forTests(
             triageRepository,
             paymentRepository,
             ChatClient.builder(stubChatModel),
-            stubChatModel
+            stubChatModel,
+            tx,
+            tx
         );
     }
 
@@ -96,11 +107,14 @@ class OrderAnomalyTriageServiceTest {
         OrderCreatedEvent event = sampleEvent();
         Payment payment = samplePayment();
         ChatModel badModel = new InvalidJsonChatModel();
-        OrderAnomalyTriageService failingService = new OrderAnomalyTriageService(
+        TransactionTemplate tx = passthroughTransactionTemplate();
+        OrderAnomalyTriageService failingService = OrderAnomalyTriageService.forTests(
             triageRepository,
             paymentRepository,
             ChatClient.builder(badModel),
-            badModel
+            badModel,
+            tx,
+            tx
         );
 
         when(triageRepository.existsByOrderId(1L)).thenReturn(false);
@@ -109,6 +123,36 @@ class OrderAnomalyTriageServiceTest {
         assertThatThrownBy(() -> failingService.triage(event))
             .isInstanceOf(Exception.class);
 
+        verify(triageRepository, never()).save(any());
+    }
+
+    @Test
+    void triage_whenConcurrentInsert_shouldNotThrow() {
+        OrderCreatedEvent event = sampleEvent();
+        Payment payment = samplePayment();
+
+        when(triageRepository.existsByOrderId(1L)).thenReturn(false);
+        when(paymentRepository.findByOrderId(1L)).thenReturn(Optional.of(payment));
+        when(triageRepository.save(any())).thenThrow(new DataIntegrityViolationException("unique order_id"));
+
+        service.triage(event);
+    }
+
+    @Test
+    void triage_whenOrderIdInvalid_shouldNoOpWithoutThrowing() {
+        OrderCreatedEvent event = new OrderCreatedEvent(
+            "not-a-number",
+            "ORD-BAD",
+            "buyer@test.com",
+            "Buyer",
+            BigDecimal.TEN,
+            List.of(),
+            "Sydney"
+        );
+
+        service.triage(event);
+
+        verify(triageRepository, never()).existsByOrderId(any());
         verify(triageRepository, never()).save(any());
     }
 
@@ -128,6 +172,21 @@ class OrderAnomalyTriageServiceTest {
         Payment payment = new Payment(null, new BigDecimal("59.98"), "pay-key-1");
         payment.markCaptured("gw-ref-123", "4242");
         return payment;
+    }
+
+    private static TransactionTemplate passthroughTransactionTemplate() {
+        TransactionTemplate template = mock(TransactionTemplate.class);
+        TransactionStatus status = mock(TransactionStatus.class);
+        lenient().doAnswer(inv -> {
+            TransactionCallback<?> callback = inv.getArgument(0);
+            return callback.doInTransaction(status);
+        }).when(template).execute(any(TransactionCallback.class));
+        lenient().doAnswer(inv -> {
+            Consumer<TransactionStatus> callback = inv.getArgument(0);
+            callback.accept(status);
+            return null;
+        }).when(template).executeWithoutResult(any());
+        return template;
     }
 
     /** Returns JSON without a valid classification enum value. */
