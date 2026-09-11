@@ -1,0 +1,12 @@
+---
+description: Java 25 / GraalVM toolchain for this repo (post Java 25 bump)
+alwaysApply: true
+---
+
+# Java 25 toolchain
+
+- **JDK for build/test:** Java **25** (`mvn -v` must show 25.x). sdkman often defaults to 17 and overrides Homebrew — set `JAVA_HOME` to Temurin/Homebrew 25 before `mvn`.
+- **Verify:** `mvn -q clean verify` (Surefire already wires Mockito `-javaagent` + `--enable-preview`).
+- **Preview:** StructuredTaskScope needs `--enable-preview` (compiler, surefire, `spring-boot:run`, Docker ENTRYPOINT).
+- **Native (`-Pnative` / `native:compile`):** use **GraalVM 25** (`*-graalce`), not Temurin. Do **not** add `--initialize-at-build-time=org.slf4j` (breaks LogbackMDCAdapter on GraalVM 25).
+- **Worktree:** prefer `.worktrees/java25-boot35` on `feature/java25-boot35-disciplines` until merged; see `context/java25-disciplines.md`.
