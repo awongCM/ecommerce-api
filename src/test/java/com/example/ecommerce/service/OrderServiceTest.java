@@ -208,6 +208,43 @@ class OrderServiceTest {
     }
 
     @Test
+    void checkout_shouldReleaseStockAndCancelOrder_whenGatewayUnavailable() {
+        testCustomer.setCart(testCart);
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setShippingAddressId(null);
+        request.setIdempotencyKey("gateway-down-key");
+        request.setPaymentToken("tok_timeout");
+
+        when(orderRepository.findByIdempotencyKey("gateway-down-key"))
+            .thenReturn(Optional.empty());
+        when(customerRepository.findByIdWithCart(1L))
+            .thenReturn(Optional.of(testCustomer));
+        when(orderRepository.save(any(Order.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentService.processPayment(any(Order.class), eq("tok_timeout")))
+            .thenReturn(new PaymentOutcome.GatewayUnavailable("circuit open"));
+
+        assertThatThrownBy(() -> orderService.checkout(1L, request))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Payment gateway unavailable")
+            .hasMessageContaining("circuit open");
+
+        verify(inventoryService).reserveStock(42L, 2);
+        verify(inventoryService).releaseStock(42L, 2);
+
+        ArgumentCaptor<Order> orderCaptor = ArgumentCaptor.forClass(Order.class);
+        verify(orderRepository, atLeastOnce()).save(orderCaptor.capture());
+        assertThat(orderCaptor.getValue().getStatus()).isEqualTo(OrderStatus.CANCELLED);
+
+        verify(outboxService, never()).enqueueOrderCreated(any());
+        verify(cartRepository, never()).save(any());
+        verify(auditService, never()).captureContext();
+        verify(auditService, never()).logSync(anyString(), anyString(), anyString(),
+            any(), anyString(), anyString(), anyString());
+    }
+
+    @Test
     void checkout_shouldReleaseStockAndCancelOrder_whenPaymentFails() {
         // Arrange
         // testProduct.setId(42L);

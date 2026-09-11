@@ -91,7 +91,8 @@ Security, persistence, and business logic are shared; only the web layer differs
 
 - **Outbox → Kafka** — Checkout enqueues via `OutboxService`; `OutboxPoller` publishes to topic `orders.created` through `OrderEventPublisher`. Event DTOs (`OrderCreatedEvent` and nested types) stay Jackson-friendly (constructors/setters as needed for consumers).
 - **`NotificationConsumer`** — Kafka listener on `orders.created`; currently logs a mock confirmation (production would wire a real email provider here). Password reset uses **`EmailService`** + `JavaMailSender` (MailHog in local Docker).
-- **`AuditService`** uses **`@Async`** so audit writes do not block the request thread (failure modes should be understood in production—logging/monitoring matter).
+- **Checkout audit** — after the checkout transaction commits, `OrderService` fans out audit + notification work with `StructuredTaskScope` on virtual threads and **`join()`s** before returning. Actor/traceId are snapshotted on the request thread (`AuditService.captureContext` / `logSync`). This is post-commit parallelism, not fire-and-forget latency hiding.
+- **Other audit callers** (e.g. status updates, admin role changes) still use **`AuditService.log`** (`@Async`) so those writes stay off the request thread.
 
 ---
 

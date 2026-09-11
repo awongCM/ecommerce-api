@@ -66,6 +66,11 @@ public class PaymentService {
         } catch (PaymentGatewayException e) {
             payment.markFailed();
             paymentRepository.save(payment);
+            // Retryable outages must propagate so @Retry / @CircuitBreaker can open
+            // and paymentFallback returns GatewayUnavailable. Business declines stay Failed.
+            if (e.isRetryable()) {
+                throw e;
+            }
             return new PaymentOutcome.Failed(e.getMessage());
         } catch (Exception e) {
             payment.markFailed();

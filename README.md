@@ -60,15 +60,15 @@ Design heuristics (layering, transactions, security, testing) live in [ARCHITECT
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │                  OrderService                         │   │
 │  │  (checkout orchestrator: inventory → payment → cart   │   │
-│  │   → outbox enqueue → async audit)                     │   │
+│  │   → outbox enqueue → after-commit STS audit/notify)   │   │
 │  └──────────────────────────────────────────────────────┘   │
 │                                                              │
 │  ┌────────────────┐  ┌────────────────┐  ┌──────────────┐   │
 │  │InventoryService│  │ PaymentService │  │ AuditService │   │
-│  │ @Retryable     │  │ @CircuitBreaker│  │ @Async       │   │
-│  │ @Version (OL)  │  │ @Transactional │  │              │   │
-│  │                │  │ (REQUIRED: same │  │              │   │
-│  │                │  │ TX as checkout)│  │              │   │
+│  │ @Retryable     │  │ @CircuitBreaker│  │ logSync/STS  │   │
+│  │ @Version (OL)  │  │ @Transactional │  │ + @Async     │   │
+│  │                │  │ (REQUIRED: same │  │ (non-checkout│   │
+│  │                │  │ TX as checkout)│  │  callers)    │   │
 │  └────────────────┘  └───────┬────────┘  └──────────────┘   │
 │                              │                               │
 └──────────────┬───────────────┼───────────────────────────────┘
@@ -309,7 +309,7 @@ SELECT id, 'ADMIN' FROM customers WHERE email = 'admin@example.com';
 - **Transactional outbox** — order-created Kafka events are written to `outbox_events` in the checkout transaction; `OutboxPoller` publishes asynchronously after commit
 - JWT authentication stores a **`UserDetails` principal** in the security context (not only the email string) so authenticated controllers resolve the user reliably
 - Kafka event payloads (`OrderCreatedEvent` and nested types) stay Jackson-friendly (constructors/setters as needed for deserialization)
-- `@Async` on `AuditService` keeps audit persistence off the critical request path
+- Checkout audit runs **after commit** via `StructuredTaskScope` (`logSync` + `join`); other callers still use `@Async` `AuditService.log`
 - Soft delete on products preserves order history integrity
 - Payment provider is pluggable: **mock** (default) or **Stripe** via `app.payment-gateway.provider`; Stripe webhooks dedupe via `processed_webhook_events`
 
