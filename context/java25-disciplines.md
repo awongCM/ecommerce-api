@@ -1,5 +1,33 @@
 # Java 25 disciplines workstream
 
+## 2026-09-11 — AI-native (discipline 8) follow-up decisions
+
+Decided in chat after PR #3 work (not implemented yet).
+
+### Repo shape
+
+- **No separate GitHub repo required** for AI-native Java.
+- Optional later: separate **process/module** for scaling/secrets — org choice, not a Comeback requirement.
+- **Mandatory:** keep AI off the checkout/payment transaction. AI classifies/drafts; Java commits money and inventory.
+
+### Preferred first slice (same `ecommerce-api` repo, new PR after #3 merges)
+
+**Payment / order anomaly triage (post-commit):**
+
+1. Trigger on Kafka `orders.created` and/or failed-payment audit (not inside `OrderService.checkout`).
+2. Spring AI / LangChain4j classifies e.g. `likely_fraud` / `gateway_noise` / `customer_retry` / `ops_review`.
+3. Persist structured result (+ optional notify); RAG over ops runbooks optional.
+4. Ship behind a feature flag; own tests + ARCHITECTURE note.
+
+**Also acceptable (same pattern):** support reply drafts, NL → catalog filters, circuit-open incident briefs.
+
+**Skip as demos:** LLM in checkout/capture; auto-refund/cancel; chatbot with no domain data.
+
+### Process
+
+- Land **PR #3** first (`feature/java25-boot35-disciplines`).
+- Open a **separate PR** for discipline 8 from updated `main` — do not bolt AI onto #3.
+
 ## 2026-09-11 — Branch status and hard-won operational notes
 
 ### Where the work lives
