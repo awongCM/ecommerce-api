@@ -33,6 +33,12 @@ spring:
     consumer:
       group-id: ecommerce-dev
       auto-offset-reset: earliest
+  ai:
+    openai:
+      api-key: ${SPRING_AI_OPENAI_API_KEY:stub-key-not-used}
+      chat:
+        options:
+          model: gpt-4o-mini
 
 logging:
   level:

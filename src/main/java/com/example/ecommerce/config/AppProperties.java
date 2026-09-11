@@ -13,6 +13,7 @@ public class AppProperties {
     private Jwt jwt = new Jwt();
     private PaymentGateway paymentGateway = new PaymentGateway();
     private Stripe stripe = new Stripe();
+    private Features features = new Features();
     private int maxCartItems = 50;
     private BigDecimal maxOrderAmount = BigDecimal.valueOf(10000);
 
@@ -54,12 +55,23 @@ public class AppProperties {
         public void setWebhookSecret(String webhookSecret) { this.webhookSecret = webhookSecret; }
     }
 
+    public static class Features {
+        private boolean orderAnomalyTriage = false;
+
+        public boolean isOrderAnomalyTriage() { return orderAnomalyTriage; }
+        public void setOrderAnomalyTriage(boolean orderAnomalyTriage) {
+            this.orderAnomalyTriage = orderAnomalyTriage;
+        }
+    }
+
     public Jwt getJwt() { return jwt; }
     public void setJwt(Jwt jwt) { this.jwt = jwt; }
     public PaymentGateway getPaymentGateway() { return paymentGateway; }
     public void setPaymentGateway(PaymentGateway pg) { this.paymentGateway = pg; }
     public Stripe getStripe() { return stripe; }
     public void setStripe(Stripe stripe) { this.stripe = stripe; }
+    public Features getFeatures() { return features; }
+    public void setFeatures(Features features) { this.features = features; }
     public int getMaxCartItems() { return maxCartItems; }
     public void setMaxCartItems(int n) { this.maxCartItems = n; }
     public BigDecimal getMaxOrderAmount() { return maxOrderAmount; }

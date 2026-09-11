@@ -38,6 +38,8 @@ There is **no committed `application-prod.yml`**. Production-style deployments u
 | `APP_BASE_URL` | No | `http://localhost:3000` | Frontend base URL embedded in reset links |
 | `MAIL_HOST` | Docker | `mailhog` | SMTP host (MailHog in docker-compose) |
 | `MAIL_PORT` | Docker | `1025` | SMTP port |
+| `ORDER_ANOMALY_TRIAGE_ENABLED` | No | `false` | Enable post-commit AI order anomaly triage (`OrderAnomalyTriageConsumer`) |
+| `SPRING_AI_OPENAI_API_KEY` | Triage + OpenAI | — | OpenAI API key when triage is enabled in docker/prod; dev uses stub model by default |
 
 ---
 

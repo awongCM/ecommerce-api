@@ -26,6 +26,12 @@ spring:
     consumer:
       group-id: ecommerce-docker
       auto-offset-reset: earliest
+  ai:
+    openai:
+      api-key: ${SPRING_AI_OPENAI_API_KEY:}
+      chat:
+        options:
+          model: gpt-4o-mini
 
 management:
   endpoints:

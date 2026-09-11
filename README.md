@@ -309,6 +309,7 @@ SELECT id, 'ADMIN' FROM customers WHERE email = 'admin@example.com';
 - **Transactional outbox** — order-created Kafka events are written to `outbox_events` in the checkout transaction; `OutboxPoller` publishes asynchronously after commit
 - JWT authentication stores a **`UserDetails` principal** in the security context (not only the email string) so authenticated controllers resolve the user reliably
 - Kafka event payloads (`OrderCreatedEvent` and nested types) stay Jackson-friendly (constructors/setters as needed for deserialization)
+- **AI order anomaly triage** (discipline 8) — optional post-commit consumer on `orders.created` (`ORDER_ANOMALY_TRIAGE_ENABLED`); Spring AI classify only, never on checkout TX
 - Checkout audit runs **after commit** via `StructuredTaskScope` (`logSync` + `join`); other callers still use `@Async` `AuditService.log`
 - Soft delete on products preserves order history integrity
 - Payment provider is pluggable: **mock** (default) or **Stripe** via `app.payment-gateway.provider`; Stripe webhooks dedupe via `processed_webhook_events`

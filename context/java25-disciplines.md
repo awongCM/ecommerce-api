@@ -46,7 +46,7 @@ Decided in chat after PR #3 work (not implemented yet).
 | 5 | Concurrency | Virtual threads enabled; `StructuredTaskScope` **after commit** for audit/notify; outbox stays in checkout TX |
 | 7 | Native | `-Pnative` + Docker `native-runtime` stage; JVM image remains default |
 | 9 | Capstone | `scripts/checkout-load.sh` + honest “not measured” table in ARCHITECTURE |
-| 8 | AI | Intentionally skipped |
+| 8 | AI | Post-commit `OrderAnomalyTriageConsumer` + Spring AI classify (separate PR from #3) |
 
 Platform gate: Java **25** + Spring Boot **3.5.x**, `--enable-preview` for StructuredTaskScope.
 
