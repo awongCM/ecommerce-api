@@ -264,9 +264,9 @@
                     <jvmArgs>
                         <jvmArg>--enable-preview</jvmArg>
                     </jvmArgs>
-                    <buildArgs>
-                        <buildArg>--initialize-at-build-time=org.slf4j</buildArg>
-                    </buildArgs>
+                    <!-- Avoid initialize-at-build-time for org.slf4j: it pulls
+                         LogbackMDCAdapter into the image heap while Logback stays
+                         run-time init, which fails native-image on GraalVM 25. -->
                 </configuration>
             </plugin>
         </plugins>
